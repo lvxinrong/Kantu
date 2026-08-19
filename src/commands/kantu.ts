@@ -1,7 +1,9 @@
 import type { CommandDefinition, CommandResult } from '@deepseek-ai/dsh-commands'
 
+import type { KantuStatusResult, SystemScanResult } from '../contracts/system-scan.js'
 import type { KantuIntent, KantuIntentParseResult } from '../intents.js'
 import { createStatusMessage } from '../tools/status.js'
+import { createSystemScanMessage } from '../tools/system-scan.js'
 
 const SUBCOMMAND_ALIASES = new Map<string, string>([
   ['system', 'system'],
@@ -82,21 +84,25 @@ export function parseKantuCommand(rawInput: string): KantuIntentParseResult {
   }
 }
 
-export interface KantuCommandOptions {
-  outputDirectory: string
+export interface KantuCommandRuntime {
+  scanSystem(options: { refresh?: boolean, signal?: AbortSignal }): Promise<SystemScanResult>
+  status(runId?: string): Promise<KantuStatusResult>
 }
 
-export function executeKantuIntent(intent: KantuIntent, options: KantuCommandOptions): CommandResult {
+export async function executeKantuIntent(
+  intent: KantuIntent,
+  runtime: KantuCommandRuntime,
+  signal?: AbortSignal,
+): Promise<CommandResult> {
   switch (intent.kind) {
     case 'help':
       return { kind: 'success', text: KANTU_COMMAND_HELP }
     case 'run.status':
-      return { kind: 'success', text: createStatusMessage(options) }
-    case 'system.scan':
-      return {
-        kind: 'error',
-        text: 'The Kantu system scan engine is not implemented yet. No scan was started.',
-      }
+      return { kind: 'success', text: createStatusMessage(await runtime.status(intent.runId)) }
+    case 'system.scan': {
+      const result = await runtime.scanSystem({ refresh: intent.refresh, signal })
+      return { kind: 'success', text: createSystemScanMessage(result) }
+    }
     case 'project.scan':
       return {
         kind: 'error',
@@ -110,17 +116,16 @@ export function executeKantuIntent(intent: KantuIntent, options: KantuCommandOpt
   }
 }
 
-export function createKantuCommand(options: KantuCommandOptions): CommandDefinition {
+export function createKantuCommand(runtime: KantuCommandRuntime): CommandDefinition {
   return {
     name: 'kantu',
     description: 'run and inspect evidence-driven Kantu architecture scans',
     input: { hint: 'system | project <project-key> | status | resume | help' },
-    handler: ({ rawInput }) => {
+    handler: ({ rawInput, signal }) => {
       const parsed = parseKantuCommand(rawInput)
       return parsed.ok
-        ? executeKantuIntent(parsed.intent, options)
+        ? executeKantuIntent(parsed.intent, runtime, signal)
         : { kind: 'error', text: parsed.error }
     },
   }
 }
-

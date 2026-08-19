@@ -2,6 +2,9 @@
     - id: kantu
       name: dsh-kantu
       config:
+        workspaceRoot: .
         outputDirectory: kantu_docs
+        discoveryMaxDepth: 3
         registerCommand: true
+        registerSystemScanTool: true
         registerStatusTool: true

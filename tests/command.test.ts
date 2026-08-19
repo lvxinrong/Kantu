@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { executeKantuIntent, KANTU_COMMAND_HELP, parseKantuCommand } from '../src/commands/kantu.js'
+import { executeKantuIntent, KANTU_COMMAND_HELP, parseKantuCommand, type KantuCommandRuntime } from '../src/commands/kantu.js'
 
 describe('parseKantuCommand', () => {
   it.each([
@@ -36,26 +36,49 @@ describe('parseKantuCommand', () => {
 })
 
 describe('executeKantuIntent', () => {
-  const options = { outputDirectory: 'kantu_docs' }
+  const runtime: KantuCommandRuntime = {
+    async scanSystem() {
+      return {
+        runId: 'system-1',
+        status: 'BLOCKED',
+        gate: 'BLOCKED',
+        validation: 'PASSED',
+        projectCount: 2,
+        outputDirectory: 'kantu_docs',
+        reused: false,
+      }
+    },
+    async status() {
+      return {
+        found: true,
+        runId: 'system-1',
+        status: 'BLOCKED',
+        gate: 'BLOCKED',
+        validation: 'PASSED',
+        projectCount: 2,
+        outputDirectory: 'kantu_docs',
+      }
+    },
+  }
 
-  it('renders deterministic help', () => {
-    expect(executeKantuIntent({ kind: 'help' }, options)).toEqual({
+  it('renders deterministic help', async () => {
+    await expect(executeKantuIntent({ kind: 'help' }, runtime)).resolves.toEqual({
       kind: 'success',
       text: KANTU_COMMAND_HELP,
     })
   })
 
-  it('reports the real scaffold status', () => {
-    expect(executeKantuIntent({ kind: 'run.status' }, options)).toEqual({
+  it('reports the latest persisted run', async () => {
+    await expect(executeKantuIntent({ kind: 'run.status' }, runtime)).resolves.toEqual({
       kind: 'success',
-      text: expect.stringContaining('Kantu is loaded.'),
+      text: expect.stringContaining('system-1'),
     })
   })
 
-  it('fails closed while the system scan engine is unavailable', () => {
-    expect(executeKantuIntent({ kind: 'system.scan', refresh: false }, options)).toEqual({
-      kind: 'error',
-      text: expect.stringContaining('not implemented'),
+  it('executes the system scan and reports its blocked evidence gate', async () => {
+    await expect(executeKantuIntent({ kind: 'system.scan', refresh: false }, runtime)).resolves.toEqual({
+      kind: 'success',
+      text: expect.stringContaining('Gate: BLOCKED'),
     })
   })
 })

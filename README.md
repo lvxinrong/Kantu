@@ -8,9 +8,11 @@ Kantu helps AI agents genuinely take over an unfamiliar software system—not me
 
 It brings source discovery, evidence collection, system modeling, project profiling, layer gates, parallel orchestration, deterministic validation, and an architecture portal into one recoverable, verifiable, and extensible scanning protocol, delivered as a native DeepSeek Harness plugin.
 
-**Project status: early design and incubation.** This repository is establishing the plugin architecture and its first trustworthy end-to-end workflow. No installable release is available yet. This README describes what we are building, not a list of features that are already complete.
+**Project status: runnable system-scan MVP, not yet published.** Kantu can now discover Git projects, persist a system-scan run, generate a source-bounded fact-base draft, and validate its machine-readable artifacts. Code-intelligence synthesis, runtime evidence, project scans, and resume orchestration are still under development.
 
-> **Core model: system-level analysis establishes the shared world model; project-level analysis defines each project profile. Module studies examine capabilities horizontally; code-path analysis follows execution vertically.**
+> **Core model: system-level analysis establishes the shared worldview; project-level analysis defines each engineering profile; module-level analysis defines responsibility boundaries; code-level analysis traces execution paths.**
+
+Module analysis maps capabilities and responsibilities horizontally; code analysis follows real execution paths vertically.
 
 ## Why Kantu
 
@@ -99,9 +101,9 @@ A complete scan is not one giant prompt. It is a sequence of inspectable stages:
 7. Enter internal maps, module studies, or code traces only when needed.
 8. Aggregate the result into human-readable reports and a navigable architecture portal.
 
-## Planned experience
+## Current MVP experience
 
-Kantu aims to let users express intent in natural language while Harness tools provide explicit execution semantics:
+Kantu is designed to accept natural-language intent through Harness tools. The current model-facing tools are `kantu_scan_system` and `kantu_status`; deeper analysis tools will be added behind the same service boundary.
 
 ```text
 Build a system-level fact base for this workspace.
@@ -123,9 +125,9 @@ For deterministic, scriptable control, the same intents use one strict command n
 /kantu help
 ```
 
-Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. The current scaffold implements command discovery, parsing, `help`, and scaffold `status`. Scan and resume actions fail closed until their execution services exist.
+Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. `system`, `status`, and `help` are runnable. `project` and `resume` are reserved and fail closed until their execution workflows exist.
 
-The model-facing tools will be organized around capabilities like these. Exact names will stabilize before the first public release:
+The planned model-facing surface will grow around capabilities like these:
 
 ```text
 scan system
@@ -141,32 +143,41 @@ validate artifacts
 
 Users should interact with a small set of clear analysis intents, not a long list of platform-specific commands.
 
-## Planned artifacts
+## Current system-scan artifacts
 
 By default, Kantu writes analysis artifacts to an isolated output directory and does not modify business code:
 
 ```text
 kantu_docs/
 ├── system/
-│   ├── system-facts.md
+│   ├── 00-system-fact-base.md
 │   ├── project-registry.json
-│   └── index-manifest.json
-├── projects/
-│   └── <project-key>/
-│       ├── project-profile.md
-│       ├── internal-map/
-│       ├── modules/
-│       └── code-traces/
+│   ├── index-manifest.json
+│   ├── validation.json
+│   └── diagrams/
+│       ├── 01-system-context.mmd
+│       ├── 02-internal-relations.mmd
+│       └── 03-entry-overview.mmd
 ├── runs/
+│   ├── latest.json
 │   └── <run-id>/
-│       ├── plan.json
-│       ├── state.json
-│       └── task-snapshots/
-└── portal/
-    └── index.html
+│       └── state.json
 ```
 
-The exact layout and contracts may change during early development. Keeping scan artifacts separate from business source code is intended to remain a stable rule.
+The fact base and diagrams are deliberately drafts. Until code-intelligence and runtime evidence are available, validation may pass while the analysis gate remains `BLOCKED`; structural validity is not treated as proof of production architecture.
+
+### Configuration
+
+| Option | Default | Purpose |
+|---|---|---|
+| `workspaceRoot` | `.` | Workspace Kantu is allowed to scan |
+| `outputDirectory` | `kantu_docs` | Artifact directory inside the workspace |
+| `discoveryMaxDepth` | `3` | Maximum recursive depth for Git-root discovery |
+| `registerCommand` | `true` | Register the optional `/kantu` command |
+| `registerSystemScanTool` | `true` | Register `kantu_scan_system` |
+| `registerStatusTool` | `true` | Register `kantu_status` |
+
+For local development, run `pnpm install` followed by `pnpm check`. Kantu is not yet published to npm, so the public install command will be documented with the first release.
 
 ## Plugin architecture direction
 
@@ -236,10 +247,10 @@ Kantu aims to provide a more trustworthy starting point and a path for analysis 
 ### Phase 1: Minimum trustworthy loop
 
 - [x] Establish the TypeScript plugin project and Harness bundle
-- [ ] Define the Kantu Service, configuration schema, and foundational tools
-- [ ] Implement multi-repository discovery and stable project identities
+- [x] Define the Kantu Service, configuration schema, and foundational tools
+- [x] Implement multi-repository discovery and stable project identities
 - [ ] Complete system fact-base generation and deterministic validation
-- [ ] Test plugin loading and the tool pipeline without a live model API
+- [x] Test plugin loading and the tool pipeline without a live model API
 
 ### Phase 2: Project analysis and recoverable orchestration
 

@@ -8,9 +8,11 @@ Kantu 希望帮助 AI Agent 真正接手一个陌生软件系统，而不只是�
 
 它把源码发现、证据采集、系统建模、项目画像、层级门禁、并行编排、结果校验和架构门户组织成一套可恢复、可验证、可扩展的扫描协议，并以 DeepSeek Harness 插件的形式提供这些能力。
 
-**项目状态：早期设计与孵化阶段。** 当前仓库正在建立插件架构与最小可用闭环，尚未发布可安装版本。本文描述的是我们正在构建的产品方向，而不是已经全部完成的功能清单。
+**项目状态：系统级扫描 MVP 已可运行，尚未正式发布。** Kantu 现在可以发现 Git 工程、持久化系统扫描运行、生成严格限定于源码证据的事实底座草稿，并校验机器可读产物。代码智能综合、运行态证据、项目级扫描和恢复编排仍在开发中。
 
-> **核心模型：系统级定世界观，项目级定工程画像；模块专题横向看能力，代码链路纵向追执行。**
+> **核心模型：系统级定世界观，项目级定工程画像，模块级定职责边界，代码级定执行链路。**
+
+模块分析横向梳理能力与职责，代码分析纵向追踪真实执行路径。
 
 ## 为什么需要 Kantu
 
@@ -99,9 +101,9 @@ flowchart LR
 7. 在需要时继续进入项目地图、模块专题或代码链路；
 8. 汇总为人类可阅读的报告和可导航的系统架构门户。
 
-## 计划中的使用体验
+## 当前 MVP 使用体验
 
-Kantu 最终希望让用户用自然语言表达目标，同时由 Harness 工具承担明确的执行语义，例如：
+Kantu 计划让用户通过 Harness 工具用自然语言表达目标。当前已经提供 `kantu_scan_system` 与 `kantu_status` 两个模型工具；更深层的分析能力会继续复用同一个服务边界。
 
 ```text
 为这个工作区建立系统级事实底座。
@@ -123,9 +125,9 @@ Kantu 最终希望让用户用自然语言表达目标，同时由 Harness 工�
 /kantu help
 ```
 
-命令同时接受中文子命令别名。Slash command 使用严格解析，不猜测错误输入；参数不合法时只返回用法说明。当前脚手架已经实现命令发现、解析、`help` 和脚手架 `status`；扫描与恢复动作在执行服务完成前保持失败关闭，不会伪造运行结果。
+命令同时接受中文子命令别名。Slash command 使用严格解析，不猜测错误输入；参数不合法时只返回用法说明。`system`、`status` 和 `help` 已可执行；`project` 与 `resume` 已保留命令契约，在对应执行流程完成前保持失败关闭。
 
-对应的模型工具将围绕以下能力设计，实际名称会在首个公开版本前稳定：
+后续模型工具会围绕以下能力继续扩展：
 
 ```text
 scan system
@@ -141,32 +143,41 @@ validate artifacts
 
 我们希望用户面对的是一组清晰的分析意图，而不是一长串平台特定命令。
 
-## 计划中的产物
+## 当前系统级扫描产物
 
 Kantu 默认只在独立输出目录中写入分析产物，不修改业务代码：
 
 ```text
 kantu_docs/
 ├── system/
-│   ├── system-facts.md
+│   ├── 00-system-fact-base.md
 │   ├── project-registry.json
-│   └── index-manifest.json
-├── projects/
-│   └── <project-key>/
-│       ├── project-profile.md
-│       ├── internal-map/
-│       ├── modules/
-│       └── code-traces/
+│   ├── index-manifest.json
+│   ├── validation.json
+│   └── diagrams/
+│       ├── 01-system-context.mmd
+│       ├── 02-internal-relations.mmd
+│       └── 03-entry-overview.mmd
 ├── runs/
+│   ├── latest.json
 │   └── <run-id>/
-│       ├── plan.json
-│       ├── state.json
-│       └── task-snapshots/
-└── portal/
-    └── index.html
+│       └── state.json
 ```
 
-具体目录和契约仍可能在早期版本中调整，但“业务源码与扫描产物隔离”会保持为稳定原则。
+事实底座与图表当前都明确标记为草稿。在代码智能与运行态证据接入前，即使机器结构校验通过，分析门禁仍会保持 `BLOCKED`；结构合法不等于生产架构已经得到证明。
+
+### 配置
+
+| 配置项 | 默认值 | 作用 |
+|---|---|---|
+| `workspaceRoot` | `.` | Kantu 被允许扫描的工作区 |
+| `outputDirectory` | `kantu_docs` | 工作区内部的产物目录 |
+| `discoveryMaxDepth` | `3` | 递归发现 Git 根的最大深度 |
+| `registerCommand` | `true` | 注册可选的 `/kantu` 命令 |
+| `registerSystemScanTool` | `true` | 注册 `kantu_scan_system` |
+| `registerStatusTool` | `true` | 注册 `kantu_status` |
+
+本地开发可执行 `pnpm install`，随后运行 `pnpm check`。Kantu 目前尚未发布到 npm，公开安装命令会随首个版本一并提供。
 
 ## 插件架构方向
 
@@ -236,10 +247,10 @@ Kantu 的目标是提供一份更可信的认知起点，以及一条可以持�
 ### 阶段一：最小可信闭环
 
 - [x] 建立独立的 TypeScript 插件工程与 Harness bundle
-- [ ] 定义 Kantu Service、配置 schema 和基础工具
-- [ ] 完成多仓工程发现与稳定项目身份
+- [x] 定义 Kantu Service、配置 schema 和基础工具
+- [x] 完成多仓工程发现与稳定项目身份
 - [ ] 跑通系统级事实底座生成与确定性校验
-- [ ] 提供无需真实模型 API 的插件和工具流水线测试
+- [x] 提供无需真实模型 API 的插件和工具流水线测试
 
 ### 阶段二：项目级与可恢复编排
 
