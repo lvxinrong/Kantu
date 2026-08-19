@@ -10,6 +10,8 @@ It brings source discovery, evidence collection, system modeling, project profil
 
 **Project status: early design and incubation.** This repository is establishing the plugin architecture and its first trustworthy end-to-end workflow. No installable release is available yet. This README describes what we are building, not a list of features that are already complete.
 
+> **Core model: system-level analysis establishes the shared world model; project-level analysis defines each project profile. Module studies examine capabilities horizontally; code-path analysis follows execution vertically.**
+
 ## Why Kantu
 
 When an agent enters a large codebase for the first time, the easiest result to produce is one that is locally correct but globally wrong:
@@ -217,17 +219,11 @@ Being indexed by the topic does not imply endorsement by DeepSeek. Kantu treats 
 
 Kantu aims to provide a more trustworthy starting point and a path for analysis that can be deepened and reviewed over time.
 
-## Origin
-
-Kantu grew out of `wantwant-project-scan`, a multi-project system takeover skill practiced in OpenCode and Kimi Code CLI.
-
-That skill validated several core ideas: a system-level fact base, project-level context isolation, evidence discipline, versioned contracts, immutable batch snapshots, recoverable run state, and an architecture portal. Kantu carries those lessons forward without copying platform-specific adapters. It reorganizes the stable protocol and deterministic capabilities as a native DeepSeek Harness plugin.
-
 ## Roadmap
 
 ### Phase 1: Minimum trustworthy loop
 
-- [ ] Establish the TypeScript plugin project and Harness bundle
+- [x] Establish the TypeScript plugin project and Harness bundle
 - [ ] Define the Kantu Service, configuration schema, and foundational tools
 - [ ] Implement multi-repository discovery and stable project identities
 - [ ] Complete system fact-base generation and deterministic validation
@@ -276,7 +272,6 @@ Interfaces, names, and directory layouts remain open for discussion before the f
 ## Acknowledgements
 
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), for the “Everything is a Plugin” agent harness and Cordis plugin runtime.
-- `wantwant-project-scan`, for the practical foundation in system scanning, evidence discipline, and multi-project orchestration.
 
 ---
 

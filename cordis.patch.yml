@@ -1,0 +1,7 @@
+- insert:
+    - id: kantu
+      name: dsh-kantu
+      config:
+        outputDirectory: kantu_docs
+        registerStatusTool: true
+

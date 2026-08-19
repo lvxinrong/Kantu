@@ -10,6 +10,8 @@ Kantu 希望帮助 AI Agent 真正接手一个陌生软件系统，而不只是�
 
 **项目状态：早期设计与孵化阶段。** 当前仓库正在建立插件架构与最小可用闭环，尚未发布可安装版本。本文描述的是我们正在构建的产品方向，而不是已经全部完成的功能清单。
 
+> **核心模型：系统级定世界观，项目级定工程画像；模块专题横向看能力，代码链路纵向追执行。**
+
 ## 为什么需要 Kantu
 
 当一个 Agent 第一次进入大型代码库时，最容易得到的是“局部正确、整体失真”的答案：
@@ -217,17 +219,11 @@ Kantu 将遵循 DeepSeek Harness 的官方插件发现约定。公开发布时�
 
 Kantu 的目标是提供一份更可信的认知起点，以及一条可以持续深化和复核的分析路径。
 
-## 项目来源
-
-Kantu 的思路来源于 `wantwant-project-scan`：一套在 OpenCode 与 Kimi Code CLI 中实践过的多工程系统接手扫描 Skill。
-
-那套 Skill 已经验证了几个关键方向：系统级事实底座、项目级隔离、证据纪律、版本化契约、批次任务快照、恢复状态和架构门户。Kantu 将继承这些经验，但不会简单复制平台适配层；它会把其中稳定的协议和确定性能力重新组织为 DeepSeek Harness 原生插件。
-
 ## 路线图
 
 ### 阶段一：最小可信闭环
 
-- [ ] 建立独立的 TypeScript 插件工程与 Harness bundle
+- [x] 建立独立的 TypeScript 插件工程与 Harness bundle
 - [ ] 定义 Kantu Service、配置 schema 和基础工具
 - [ ] 完成多仓工程发现与稳定项目身份
 - [ ] 跑通系统级事实底座生成与确定性校验
@@ -276,7 +272,6 @@ Kantu 目前最需要的不是大量功能代码，而是对问题边界和协�
 ## 致谢
 
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：提供“Everything is a Plugin”的 Agent Harness 与 Cordis 插件运行时。
-- `wantwant-project-scan`：为 Kantu 提供了系统级扫描、证据纪律和多工程编排的实践基础。
 
 ---
 
