@@ -113,6 +113,18 @@ Kantu 最终希望让用户用自然语言表达目标，同时由 Harness 工�
 追踪下单接口从 Controller 到数据库与消息发布的完整源码链路。
 ```
 
+需要确定性控制或脚本化调用时，同一组意图使用统一、严格的命令命名空间：
+
+```text
+/kantu system [--refresh]
+/kantu project <project-key> [--refresh]
+/kantu status [run-id]
+/kantu resume [run-id]
+/kantu help
+```
+
+命令同时接受中文子命令别名。Slash command 使用严格解析，不猜测错误输入；参数不合法时只返回用法说明。当前脚手架已经实现命令发现、解析、`help` 和脚手架 `status`；扫描与恢复动作在执行服务完成前保持失败关闭，不会伪造运行结果。
+
 对应的模型工具将围绕以下能力设计，实际名称会在首个公开版本前稳定：
 
 ```text

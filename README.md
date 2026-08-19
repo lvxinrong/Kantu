@@ -113,6 +113,18 @@ Scan every project that passes the gate in parallel. Preserve failed tasks so th
 Trace the order endpoint from its controller to database writes and message publication.
 ```
 
+For deterministic, scriptable control, the same intents use one strict command namespace:
+
+```text
+/kantu system [--refresh]
+/kantu project <project-key> [--refresh]
+/kantu status [run-id]
+/kantu resume [run-id]
+/kantu help
+```
+
+Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. The current scaffold implements command discovery, parsing, `help`, and scaffold `status`. Scan and resume actions fail closed until their execution services exist.
+
 The model-facing tools will be organized around capabilities like these. Exact names will stabilize before the first public release:
 
 ```text

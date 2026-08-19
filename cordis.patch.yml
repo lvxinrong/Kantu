@@ -3,5 +3,5 @@
       name: dsh-kantu
       config:
         outputDirectory: kantu_docs
+        registerCommand: true
         registerStatusTool: true
-
