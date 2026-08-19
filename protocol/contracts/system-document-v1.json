@@ -1,0 +1,52 @@
+{
+  "contractId": "kantu/contract/system-document/v1",
+  "version": "1.1.0",
+  "metadata": {
+    "协议版本": ["kantu/contract/system-document/v1"],
+    "文档状态": ["完整", "草稿"],
+    "证据状态": ["运行态已确认", "运行态部分确认，人工待确认", "源码视角已完成，运行态待确认", "证据不足"],
+    "下层门禁": ["READY", "BLOCKED"],
+    "校验状态": ["PASSED", "FAILED", "NOT_RUN", "NOT_APPLICABLE"]
+  },
+  "headings": [
+    "## 0. 文档边界说明",
+    "## 1. 当前目录性质",
+    "## 2. 代码智能索引清单摘要",
+    "## 3. 工程清单与归属",
+    "## 4. 生产服务边界",
+    "## 5. 系统入口",
+    "## 6. 基础设施事实",
+    "## 7. 入口链路概览",
+    "## 8. 系统能力地图（技术视角）",
+    "## 9. 系统内部跨项目关系与调用边界",
+    "## 10. 外部系统与第三方依赖",
+    "## 11. 数据资产与归属边界",
+    "## 12. 废弃、历史与旁支工程",
+    "## 13. 术语表",
+    "## 14. 当前可信结论",
+    "## 15. 冲突与待复核结论",
+    "## 16. 关键待确认问题分级",
+    "## 17. 系统级图表索引",
+    "## 18. 事实底座质量评分",
+    "## 19. 证据覆盖率摘要",
+    "## 20. 系统级产物自检",
+    "## 21. 后续分析任务拆分"
+  ],
+  "requiredArtifacts": [
+    "system/00-system-fact-base.md",
+    "system/project-registry.json",
+    "system/index-manifest.json",
+    "system/evidence/index.json",
+    "system/protocol-lock.json",
+    "system/validation.json",
+    "system/diagrams/01-system-context.mmd",
+    "system/diagrams/02-internal-relations.mmd",
+    "system/diagrams/03-entry-overview.mmd"
+  ],
+  "forbiddenHeadingPatterns": ["重构建议", "技术债务", "代码热点", "业务流程"],
+  "requiredQuestionClasses": ["阻断项目级", "影响生产边界", "影响入口链路", "影响数据归属", "可延后"],
+  "requiredSelfChecks": ["工程注册表已生成", "每个工程都有索引状态", "关键待确认问题已分级", "证据仲裁已执行", "敏感信息已脱敏", "源码存在与生产启用已区分", "系统级边界未越界", "项目级门禁"],
+  "requiredEvidenceSourceTypes": ["运行态", "人工确认", "部署发布", "代码图谱", "源码", "历史文档"],
+  "qualityDimensions": ["工程覆盖", "生产边界可信度", "入口链路可信度", "内部关系可信度", "外部依赖可信度", "数据归属可信度"],
+  "evidenceCoverageObjects": ["工程", "生产服务", "系统入口", "入口链路", "内部关系", "外部依赖", "数据资产"]
+}

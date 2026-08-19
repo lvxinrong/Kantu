@@ -1,0 +1,9 @@
+{
+  "contractId": "kantu/contract/project-registry/v1",
+  "version": "1.0.0",
+  "rootFields": ["protocolVersion", "generatedAt", "workspaceRoot", "discoveryMaxDepth", "projectCount", "projects", "skippedDirectories"],
+  "projectFields": ["projectKey", "projectName", "projectDir", "gitHead", "projectType", "classificationEvidence", "productionStatus"],
+  "identityRule": "projectKey is derived from the workspace-relative Git root path; a basename alone is not an identity.",
+  "pathRule": "projectDir is workspace-relative and cannot contain parent traversal.",
+  "productionStates": ["UNCONFIRMED"]
+}

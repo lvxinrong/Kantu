@@ -1,4 +1,11 @@
 export const SYSTEM_SCAN_PROTOCOL = 'kantu/system-scan/v1'
+export const SYSTEM_DOCUMENT_PROTOCOL = 'kantu/contract/system-document/v1'
+
+export interface ProtocolRunReference {
+  packId: string
+  version: string
+  digest: string
+}
 
 export type SystemScanStatus =
   | 'DISCOVERING'
@@ -20,6 +27,7 @@ export interface RunTransition {
 
 export interface SystemScanRunState {
   protocolVersion: typeof SYSTEM_SCAN_PROTOCOL
+  protocol: ProtocolRunReference
   runId: string
   status: SystemScanStatus
   gate: GateStatus
@@ -31,6 +39,9 @@ export interface SystemScanRunState {
   outputDirectory: string
   refresh: boolean
   projectCount: number
+  indexedProjectCount: number
+  evidenceProjectCount: number
+  scopeViolationCount: number
   transitions: RunTransition[]
   error?: string
 }
@@ -80,15 +91,54 @@ export interface SkippedDirectory {
 export interface IndexRecord {
   projectKey: string
   projectDir: string
-  provider: 'unconfigured'
-  status: 'PENDING'
+  provider: 'codebase-memory-mcp' | 'unavailable'
+  status: 'FRESH' | 'FAILED' | 'PENDING'
   reason: string
+  mcpProject?: string
+  nodeCount?: number
+  edgeCount?: number
+  indexedAt?: string
 }
 
 export interface IndexManifest {
   protocolVersion: typeof SYSTEM_SCAN_PROTOCOL
   generatedAt: string
   records: IndexRecord[]
+}
+
+export type EvidenceCollectionStatus = 'COLLECTED' | 'FAILED' | 'SKIPPED'
+export type EvidenceScopeStatus = 'CLEAN' | 'VIOLATION'
+
+export interface ProjectSystemEvidence {
+  projectKey: string
+  projectDir: string
+  mcpProject?: string
+  status: EvidenceCollectionStatus
+  projectTypeCandidates: string[]
+  entries: string[]
+  outboundDependencies: string[]
+  dataAssets: string[]
+  infrastructure: string[]
+  aliases: string[]
+  capabilityCandidates: string[]
+  evidencePaths: string[]
+  conflicts: string[]
+  scopeStatus: EvidenceScopeStatus
+  scopeViolations: string[]
+  failureReason?: string
+}
+
+export interface SystemEvidenceBundle {
+  protocolVersion: typeof SYSTEM_SCAN_PROTOCOL
+  generatedAt: string
+  records: ProjectSystemEvidence[]
+}
+
+export interface SystemScanProgress {
+  stage: SystemScanStatus
+  message: string
+  completed?: number
+  total?: number
 }
 
 export interface ValidationIssue {
@@ -99,6 +149,7 @@ export interface ValidationIssue {
 
 export interface SystemValidationReport {
   protocolVersion: typeof SYSTEM_SCAN_PROTOCOL
+  protocol?: ProtocolRunReference
   generatedAt: string
   status: ValidationStatus
   gate: GateStatus
@@ -111,6 +162,9 @@ export interface SystemScanResult {
   gate: GateStatus
   validation: ValidationStatus
   projectCount: number
+  indexedProjectCount: number
+  evidenceProjectCount: number
+  scopeViolationCount: number
   outputDirectory: string
   reused: boolean
 }
@@ -122,5 +176,8 @@ export interface KantuStatusResult {
   gate: GateStatus
   validation: ValidationStatus
   projectCount: number
+  indexedProjectCount: number
+  evidenceProjectCount: number
+  scopeViolationCount: number
   outputDirectory: string
 }

@@ -14,6 +14,9 @@ export type * from './intents.js'
 export type * from './contracts/system-scan.js'
 export { KANTU_COMMAND_HELP, parseKantuCommand } from './commands/kantu.js'
 export { KantuService } from './service.js'
+export { loadProtocolPack, parseProtocolContract, protocolResource } from './protocol/catalog.js'
+export type * from './protocol/catalog.js'
+export { markdownHeadings, metadataValues, validateSystemDocument } from './protocol/validation.js'
 
 export function apply(ctx: Context, config: KantuConfig): void {
   const service = new KantuService(ctx, config)

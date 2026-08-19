@@ -1,9 +1,13 @@
 import Schema from '@deepseek-ai/schemastery'
 
 export interface Config {
-  workspaceRoot: string
+  workspaceRoot?: string
   outputDirectory: string
   discoveryMaxDepth: number
+  codebaseMemoryServerName?: string
+  indexMode?: 'fast' | 'moderate' | 'full'
+  evidenceProvider?: string
+  systemConcurrency?: number
   registerCommand: boolean
   registerSystemScanTool: boolean
   registerStatusTool: boolean
@@ -11,8 +15,7 @@ export interface Config {
 
 export const Config: Schema<Config> = Schema.object({
   workspaceRoot: Schema.string()
-    .default('.')
-    .description('Workspace root scanned by Kantu. Relative paths resolve from the Harness process working directory.'),
+    .description('Optional scan-root override. By default Kantu uses the current DeepSeek Harness session workspace; relative overrides resolve from that workspace.'),
   outputDirectory: Schema.string()
     .default('kantu_docs')
     .description('Directory where Kantu will write generated analysis artifacts.'),
@@ -21,6 +24,20 @@ export const Config: Schema<Config> = Schema.object({
     .max(12)
     .default(3)
     .description('Maximum directory depth used to discover Git project roots.'),
+  codebaseMemoryServerName: Schema.string()
+    .default('codebase_memory_mcp')
+    .description('DSH MCP server namespace that provides codebase-memory tools.'),
+  indexMode: Schema.union(['fast', 'moderate', 'full'] as const)
+    .default('moderate')
+    .description('codebase-memory indexing mode used for newly indexed or refreshed projects.'),
+  evidenceProvider: Schema.string()
+    .default('spawn')
+    .description('DSH one-shot subagent provider used for read-only per-project system evidence workers.'),
+  systemConcurrency: Schema.number()
+    .min(1)
+    .max(16)
+    .default(4)
+    .description('Maximum concurrent indexing and system evidence tasks.'),
   registerCommand: Schema.boolean()
     .default(true)
     .description('Register the deterministic /kantu command when a command adapter is available.'),

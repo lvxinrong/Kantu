@@ -7,13 +7,27 @@ export function createStatusMessage(status: KantuStatusResult): string {
   if (!status.found) {
     return `No Kantu run was found. Analysis artifacts will be written to ${status.outputDirectory}.`
   }
+
+  const scanOutcome = status.status === 'FAILED'
+    ? 'failed'
+    : status.status === 'COMPLETED' || status.status === 'BLOCKED'
+      ? 'finished'
+      : 'in progress'
+  const sourceAnalysisComplete = status.projectCount > 0
+    && status.indexedProjectCount === status.projectCount
+    && status.evidenceProjectCount === status.projectCount
+    && status.scopeViolationCount === 0
+  const analysisOutcome = sourceAnalysisComplete
+    ? 'completed at source level; runtime evidence pending'
+    : 'awaiting source evidence'
+
   return [
-    `Kantu run ${status.runId}: ${status.status}.`,
-    `Projects: ${status.projectCount}.`,
-    `Validation: ${status.validation}.`,
-    `Gate: ${status.gate}.`,
-    `Artifacts: ${status.outputDirectory}.`,
-  ].join(' ')
+    `Kantu system scan ${scanOutcome} · ${status.projectCount} projects · system analysis ${analysisOutcome}.`,
+    `Fresh indexes ${status.indexedProjectCount}/${status.projectCount} · collected evidence ${status.evidenceProjectCount}/${status.projectCount} · scope violations ${status.scopeViolationCount}.`,
+    `System artifact validation ${status.validation} · project-scan gate ${status.gate}.`,
+    `Artifacts: ${status.outputDirectory}/system/00-system-fact-base.md`,
+    `Run: ${status.runId} · machine status ${status.status}.`,
+  ].join('\n')
 }
 
 export function createStatusTool(service: KantuService) {
@@ -34,13 +48,16 @@ export function createStatusTool(service: KantuService) {
           gate: { type: 'string', required: true },
           validation: { type: 'string', required: true },
           projectCount: { type: 'number', required: true },
+          indexedProjectCount: { type: 'number', required: true },
+          evidenceProjectCount: { type: 'number', required: true },
+          scopeViolationCount: { type: 'number', required: true },
           outputDirectory: { type: 'string', required: true },
         },
       },
       render: (_args, value) => [{ type: 'text', text: createStatusMessage(value as unknown as KantuStatusResult) }],
     },
-    async execute(args) {
-      return service.status(args.runId)
+    async execute(args, exec) {
+      return service.status(args.runId, { workspaceRoot: exec.agent?.session.header.cwd })
     },
   })
 }

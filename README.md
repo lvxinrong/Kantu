@@ -8,7 +8,7 @@ Kantu helps AI agents genuinely take over an unfamiliar software system—not me
 
 It brings source discovery, evidence collection, system modeling, project profiling, layer gates, parallel orchestration, deterministic validation, and an architecture portal into one recoverable, verifiable, and extensible scanning protocol, delivered as a native DeepSeek Harness plugin.
 
-**Project status: runnable system-scan MVP, not yet published.** Kantu can now discover Git projects, persist a system-scan run, generate a source-bounded fact-base draft, and validate its machine-readable artifacts. Code-intelligence synthesis, runtime evidence, project scans, and resume orchestration are still under development.
+**Project status: the source-level system scan is runnable end to end, but not yet published.** Kantu can discover Git projects, build or reuse an independent codebase-memory index for each project, run isolated read-only evidence workers, synthesize a 22-section system fact base through one deterministic writer, and enforce gates over both machine-readable and Markdown artifacts. Runtime evidence, project scans, and resume orchestration are still under development.
 
 > **Core model: system-level analysis establishes the shared worldview; project-level analysis defines each engineering profile; module-level analysis defines responsibility boundaries; code-level analysis traces execution paths.**
 
@@ -125,7 +125,9 @@ For deterministic, scriptable control, the same intents use one strict command n
 /kantu help
 ```
 
-Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. `system`, `status`, and `help` are runnable. `project` and `resume` are reserved and fail closed until their execution workflows exist.
+Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. `system` performs discovery, independent indexing, per-project evidence collection, fact-base synthesis, and deterministic validation. It reports stages and quarter-progress milestones in the main conversation. A first scan—or a run with `--refresh`—can take substantial time; a normal run reuses indexes matched by the project's exact absolute root. Completed runs with the same protocol can be reused, while `BLOCKED` runs are retried instead of permanently caching failure.
+
+The project gate can become `READY` once source-level indexes and evidence are complete. This does not claim that the production topology has been confirmed. Missing MCP tools, failed indexes, failed workers, or scope violations keep the gate `BLOCKED`. `system`, `status`, and `help` are runnable; `project` and `resume` remain reserved and fail closed until their workflows exist.
 
 The planned model-facing surface will grow around capabilities like these:
 
@@ -153,6 +155,10 @@ kantu_docs/
 │   ├── 00-system-fact-base.md
 │   ├── project-registry.json
 │   ├── index-manifest.json
+│   ├── evidence/
+│   │   ├── index.json
+│   │   └── <project-key>.json
+│   ├── protocol-lock.json
 │   ├── validation.json
 │   └── diagrams/
 │       ├── 01-system-context.mmd
@@ -164,18 +170,42 @@ kantu_docs/
 │       └── state.json
 ```
 
-The fact base and diagrams are deliberately drafts. Until code-intelligence and runtime evidence are available, validation may pass while the analysis gate remains `BLOCKED`; structural validity is not treated as proof of production architecture.
+Each project's raw structured evidence is written separately before the single system writer synthesizes the fact base. Parallel workers never compete to write the document or consume one another's output. The main document keeps only representative facts needed to establish the system worldview; complete entries, dependencies, data assets, and conflicts remain in the per-project evidence JSON. With complete source evidence, the document may be marked complete for the source view and the project gate may open; runtime facts remain explicitly unconfirmed, and aggregate validation is never treated as proof of production architecture.
+
+Code definitions, routes, and call relationships remain codebase-memory-first. For manifests, READMEs, CI, containers, and deployment configuration that graphs often miss, Kantu collects a bounded metadata baseline in the parent process with project-root containment, symlink rejection, file and aggregate size limits, and sensitive-value redaction before model injection. Evidence workers do not receive arbitrary filesystem reads, shell access, or write capabilities.
+
+### System Protocol Pack
+
+Kantu ships system-level analysis knowledge as a versioned `protocol/` directory rather than hiding it inside one prompt. The pack contains machine contracts for evidence, project identity, index state, the 22-section system document, and layer gates; Markdown policies for analysis boundaries, redaction, output paths, and validation; and focused prompts for the system writer and read-only evidence tasks.
+
+The plugin loads and validates this catalog at runtime. Every scan writes `system/protocol-lock.json` with the pack version plus SHA-256 digests for the manifest and every resource. A changed pack therefore creates a new run instead of silently reusing results produced under different rules. Script-worthy invariants are implemented in TypeScript and tested; the Markdown remains inspectable protocol content, not an unenforced appendix.
 
 ### Configuration
 
 | Option | Default | Purpose |
 |---|---|---|
-| `workspaceRoot` | `.` | Workspace Kantu is allowed to scan |
+| `workspaceRoot` | Current DSH session workspace | Optional scan-root override; relative values resolve from the session workspace |
 | `outputDirectory` | `kantu_docs` | Artifact directory inside the workspace |
 | `discoveryMaxDepth` | `3` | Maximum recursive depth for Git-root discovery |
+| `codebaseMemoryServerName` | `codebase_memory_mcp` | DSH namespace for codebase-memory MCP tools |
+| `indexMode` | `moderate` | `fast`, `moderate`, or `full` mode for new or refreshed indexes |
+| `evidenceProvider` | `spawn` | DSH subagent provider for isolated read-only evidence workers |
+| `systemConcurrency` | `4` | Maximum concurrent index and evidence tasks |
 | `registerCommand` | `true` | Register the optional `/kantu` command |
 | `registerSystemScanTool` | `true` | Register `kantu_scan_system` |
 | `registerStatusTool` | `true` | Register `kantu_status` |
+
+The Kantu bundle also mounts the official DeepSeek Harness `@deepseek-ai/dsh-mcp-client` and starts `codebase-memory-mcp` over stdio. Before starting DSH, make sure that executable is available on `PATH`:
+
+```bash
+command -v codebase-memory-mcp
+```
+
+After installing the plugin, verify that both configuration layers are present:
+
+```bash
+dsh --profile web --dump-config | rg -n -C 6 "kantu-codebase-memory|codebase_memory_mcp|dsh-kantu"
+```
 
 For local development, run `pnpm install` followed by `pnpm check`. Kantu is not yet published to npm, so the public install command will be documented with the first release.
 
@@ -249,7 +279,8 @@ Kantu aims to provide a more trustworthy starting point and a path for analysis 
 - [x] Establish the TypeScript plugin project and Harness bundle
 - [x] Define the Kantu Service, configuration schema, and foundational tools
 - [x] Implement multi-repository discovery and stable project identities
-- [ ] Complete system fact-base generation and deterministic validation
+- [x] Package the system-level contracts, policies, prompts, and protocol lock
+- [x] Complete independent indexing, read-only evidence collection, system fact-base generation, and deterministic validation
 - [x] Test plugin loading and the tool pipeline without a live model API
 
 ### Phase 2: Project analysis and recoverable orchestration
@@ -257,7 +288,7 @@ Kantu aims to provide a more trustworthy starting point and a path for analysis 
 - [ ] Isolated single-project scans
 - [ ] Project-type detection and template selection
 - [ ] Immutable task snapshots, batch state, and failure recovery
-- [ ] Subagent Provider integration
+- [x] Subagent Provider integration for system-level read-only evidence workers
 - [ ] Project-document contracts and quality gates
 
 ### Phase 3: Deep analysis and system maps

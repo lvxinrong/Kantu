@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { executeKantuIntent, KANTU_COMMAND_HELP, parseKantuCommand, type KantuCommandRuntime } from '../src/commands/kantu.js'
+import {
+  createKantuCommand,
+  executeKantuIntent,
+  KANTU_COMMAND_HELP,
+  parseKantuCommand,
+  type KantuCommandRuntime,
+} from '../src/commands/kantu.js'
 
 describe('parseKantuCommand', () => {
   it.each([
@@ -44,6 +50,9 @@ describe('executeKantuIntent', () => {
         gate: 'BLOCKED',
         validation: 'PASSED',
         projectCount: 2,
+        indexedProjectCount: 2,
+        evidenceProjectCount: 1,
+        scopeViolationCount: 0,
         outputDirectory: 'kantu_docs',
         reused: false,
       }
@@ -56,6 +65,9 @@ describe('executeKantuIntent', () => {
         gate: 'BLOCKED',
         validation: 'PASSED',
         projectCount: 2,
+        indexedProjectCount: 2,
+        evidenceProjectCount: 1,
+        scopeViolationCount: 0,
         outputDirectory: 'kantu_docs',
       }
     },
@@ -78,7 +90,88 @@ describe('executeKantuIntent', () => {
   it('executes the system scan and reports its blocked evidence gate', async () => {
     await expect(executeKantuIntent({ kind: 'system.scan', refresh: false }, runtime)).resolves.toEqual({
       kind: 'success',
-      text: expect.stringContaining('Gate: BLOCKED'),
+      text: expect.stringContaining('system analysis awaiting source evidence'),
+    })
+  })
+
+  it('forwards the receiving session workspace to command operations', async () => {
+    let scanWorkspace: string | undefined
+    let statusWorkspace: string | undefined
+    const scopedRuntime: KantuCommandRuntime = {
+      async scanSystem(options) {
+        scanWorkspace = options.workspaceRoot
+        return runtime.scanSystem(options)
+      },
+      async status(runId, options) {
+        statusWorkspace = options?.workspaceRoot
+        return runtime.status(runId, options)
+      },
+    }
+
+    await executeKantuIntent({ kind: 'system.scan', refresh: false }, scopedRuntime, undefined, '/workspace/current')
+    await executeKantuIntent({ kind: 'run.status' }, scopedRuntime, undefined, '/workspace/current')
+
+    expect(scanWorkspace).toBe('/workspace/current')
+    expect(statusWorkspace).toBe('/workspace/current')
+  })
+
+  it('runs system scans deterministically while publishing visible start and completion messages', async () => {
+    const queued: unknown[] = []
+    let scanWorkspace: string | undefined
+    let refresh: boolean | undefined
+    const command = createKantuCommand({
+      ...runtime,
+      async scanSystem(options) {
+        scanWorkspace = options.workspaceRoot
+        refresh = options.refresh
+        return runtime.scanSystem(options)
+      },
+    })
+
+    const result = await command.handler({
+      commandId: 'cmd-kantu-1',
+      rawInput: ' 系统级扫描 --refresh',
+      signal: new AbortController().signal,
+      agent: {
+        followup(message: unknown) {
+          queued.push(message)
+        },
+        session: { header: { cwd: '/workspace/current' } },
+      },
+    } as never)
+
+    expect(result).toMatchObject({
+      kind: 'success',
+      text: expect.stringContaining('Kantu system scan completed'),
+    })
+    expect(scanWorkspace).toBe('/workspace/current')
+    expect(refresh).toBe(true)
+    expect(queued).toHaveLength(2)
+    expect(queued[0]).toMatchObject({
+      role: 'user',
+      source: {
+        kind: 'plugin',
+        plugin: 'kantu',
+        form: 'notice',
+        summary: 'Kantu 系统级扫描已开始 · 正在发现工程',
+      },
+      content: [{
+        type: 'text',
+        text: expect.stringContaining('Do not call any tools'),
+      }],
+    })
+    expect(queued[1]).toMatchObject({
+      role: 'user',
+      source: {
+        kind: 'plugin',
+        plugin: 'kantu',
+        form: 'notice',
+        summary: 'Kantu 系统级扫描结束 · 1/2 个工程已取证 · BLOCKED',
+      },
+      content: [{
+        type: 'text',
+        text: expect.stringContaining('Do not describe the aggregate validation field as structure-only validation'),
+      }],
     })
   })
 })

@@ -11,6 +11,9 @@ describe('createStatusMessage', () => {
       gate: 'BLOCKED',
       validation: 'NOT_RUN',
       projectCount: 0,
+      indexedProjectCount: 0,
+      evidenceProjectCount: 0,
+      scopeViolationCount: 0,
       outputDirectory: '.kantu/artifacts',
     })
 
@@ -18,7 +21,7 @@ describe('createStatusMessage', () => {
     expect(message).toContain('.kantu/artifacts')
   })
 
-  it('renders validation and gate separately', () => {
+  it('puts the scan outcome before run metadata', () => {
     const message = createStatusMessage({
       found: true,
       runId: 'system-1',
@@ -26,10 +29,17 @@ describe('createStatusMessage', () => {
       gate: 'BLOCKED',
       validation: 'PASSED',
       projectCount: 3,
+      indexedProjectCount: 2,
+      evidenceProjectCount: 1,
+      scopeViolationCount: 0,
       outputDirectory: 'kantu_docs',
     })
 
-    expect(message).toContain('Validation: PASSED')
-    expect(message).toContain('Gate: BLOCKED')
+    expect(message.split('\n')[0]).toBe(
+      'Kantu system scan finished · 3 projects · system analysis awaiting source evidence.',
+    )
+    expect(message).toContain('Fresh indexes 2/3 · collected evidence 1/3 · scope violations 0.')
+    expect(message).toContain('System artifact validation PASSED · project-scan gate BLOCKED.')
+    expect(message).toContain('Run: system-1 · machine status BLOCKED.')
   })
 })

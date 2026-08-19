@@ -30,7 +30,6 @@ describe('Kantu plugin registration', () => {
     })
 
     apply(ctx, {
-      workspaceRoot: '.',
       outputDirectory: 'kantu_docs',
       discoveryMaxDepth: 3,
       registerCommand: true,

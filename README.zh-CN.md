@@ -8,7 +8,7 @@ Kantu 希望帮助 AI Agent 真正接手一个陌生软件系统，而不只是�
 
 它把源码发现、证据采集、系统建模、项目画像、层级门禁、并行编排、结果校验和架构门户组织成一套可恢复、可验证、可扩展的扫描协议，并以 DeepSeek Harness 插件的形式提供这些能力。
 
-**项目状态：系统级扫描 MVP 已可运行，尚未正式发布。** Kantu 现在可以发现 Git 工程、持久化系统扫描运行、生成严格限定于源码证据的事实底座草稿，并校验机器可读产物。代码智能综合、运行态证据、项目级扫描和恢复编排仍在开发中。
+**项目状态：系统级源码扫描闭环已可运行，尚未正式发布。** Kantu 现在可以发现 Git 工程，为每个工程建立或复用独立的 codebase-memory 索引，启动隔离的只读证据 worker，由确定性单写者综合 22 章节系统事实底座，并对机器产物与 Markdown 执行门禁校验。运行态证据、项目级扫描和恢复编排仍在开发中。
 
 > **核心模型：系统级定世界观，项目级定工程画像，模块级定职责边界，代码级定执行链路。**
 
@@ -125,7 +125,9 @@ Kantu 计划让用户通过 Harness 工具用自然语言表达目标。当前�
 /kantu help
 ```
 
-命令同时接受中文子命令别名。Slash command 使用严格解析，不猜测错误输入；参数不合法时只返回用法说明。`system`、`status` 和 `help` 已可执行；`project` 与 `resume` 已保留命令契约，在对应执行流程完成前保持失败关闭。
+命令同时接受中文子命令别名。Slash command 使用严格解析，不猜测错误输入；参数不合法时只返回用法说明。`system` 会依次完成工程发现、独立索引、逐工程证据采集、事实底座综合和确定性校验，并在主对话中汇报阶段与四分位进度。首次扫描或 `--refresh` 可能耗时较长；普通扫描会按工程绝对根路径复用已有索引。已完成且协议版本一致的运行可以直接复用，`BLOCKED` 运行会在下次执行时重新尝试，而不是永久缓存失败。
+
+源码视角的索引和证据全部完成后，系统门禁可以进入 `READY`；这仍不等于生产拓扑已得到确认。缺失 MCP 工具、索引失败、worker 失败或越界读取都会让门禁保持 `BLOCKED`。`system`、`status` 和 `help` 已可执行；`project` 与 `resume` 已保留命令契约，在对应执行流程完成前保持失败关闭。
 
 后续模型工具会围绕以下能力继续扩展：
 
@@ -153,6 +155,10 @@ kantu_docs/
 │   ├── 00-system-fact-base.md
 │   ├── project-registry.json
 │   ├── index-manifest.json
+│   ├── evidence/
+│   │   ├── index.json
+│   │   └── <project-key>.json
+│   ├── protocol-lock.json
 │   ├── validation.json
 │   └── diagrams/
 │       ├── 01-system-context.mmd
@@ -164,18 +170,42 @@ kantu_docs/
 │       └── state.json
 ```
 
-事实底座与图表当前都明确标记为草稿。在代码智能与运行态证据接入前，即使机器结构校验通过，分析门禁仍会保持 `BLOCKED`；结构合法不等于生产架构已经得到证明。
+每个工程的原始结构化证据先写入独立文件，系统事实底座只由单一写者综合，避免并行 worker 互相污染或竞争写文档。主文档只保留建立系统世界观所需的代表性事实，完整入口、依赖、数据资产与冲突仍保留在逐工程证据 JSON 中。源码证据齐备时文档可以标记为“完整（源码视角）”并打开项目级门禁；运行态事实仍会明确标记为待确认，综合校验通过也不等于生产架构已经得到证明。
+
+代码定义、路由和调用关系优先由 codebase-memory 提供。对于图谱容易遗漏的 manifest、README、CI、容器和部署配置，Kantu 会在父进程中执行工程根目录约束、符号链接拒绝、文件与总量限制以及敏感值脱敏，再把安全元数据基线交给证据 worker。worker 不会获得任意文件读取、shell 或写入能力。
+
+### 系统级 Protocol Pack
+
+Kantu 将系统级分析知识作为版本化的 `protocol/` 目录随插件发布，而不是把所有规则隐藏在一个超长 Prompt 里。协议包包含证据、工程身份、索引状态、22 章节系统文档与层级门禁的机器契约；包含分析边界、脱敏、输出路径和校验策略；也包含系统单写者与只读证据任务各自需要的聚焦提示。
+
+插件会在运行时加载并校验这份目录。每次扫描都会生成 `system/protocol-lock.json`，记录协议包版本、manifest 以及每个资源的 SHA-256 摘要。协议包发生变化后，Kantu 会创建新运行，不会静默复用旧规则下的结果。适合程序执行的约束已经迁入 TypeScript 并由测试守护；Markdown 是可审阅的协议正文，而不是无人执行的附件。
 
 ### 配置
 
 | 配置项 | 默认值 | 作用 |
 |---|---|---|
-| `workspaceRoot` | `.` | Kantu 被允许扫描的工作区 |
+| `workspaceRoot` | 当前 DSH 会话工作区 | 可选扫描根覆盖；相对路径以会话工作区为基准解析 |
 | `outputDirectory` | `kantu_docs` | 工作区内部的产物目录 |
 | `discoveryMaxDepth` | `3` | 递归发现 Git 根的最大深度 |
+| `codebaseMemoryServerName` | `codebase_memory_mcp` | codebase-memory MCP 工具的 DSH namespace |
+| `indexMode` | `moderate` | 新建或刷新索引时使用的 `fast` / `moderate` / `full` 模式 |
+| `evidenceProvider` | `spawn` | 用于逐工程只读证据任务的 DSH subagent provider |
+| `systemConcurrency` | `4` | 索引和证据任务的最大并发数 |
 | `registerCommand` | `true` | 注册可选的 `/kantu` 命令 |
 | `registerSystemScanTool` | `true` | 注册 `kantu_scan_system` |
 | `registerStatusTool` | `true` | 注册 `kantu_status` |
+
+Kantu bundle 会同时挂载 DeepSeek Harness 官方 `@deepseek-ai/dsh-mcp-client`，并通过 stdio 启动 `codebase-memory-mcp`。因此运行前需要确保该可执行文件在启动 DSH 的 `PATH` 中：
+
+```bash
+command -v codebase-memory-mcp
+```
+
+安装插件后，可用下面的命令确认 MCP 与 Kantu 两个配置层都已出现：
+
+```bash
+dsh --profile web --dump-config | rg -n -C 6 "kantu-codebase-memory|codebase_memory_mcp|dsh-kantu"
+```
 
 本地开发可执行 `pnpm install`，随后运行 `pnpm check`。Kantu 目前尚未发布到 npm，公开安装命令会随首个版本一并提供。
 
@@ -249,7 +279,8 @@ Kantu 的目标是提供一份更可信的认知起点，以及一条可以持�
 - [x] 建立独立的 TypeScript 插件工程与 Harness bundle
 - [x] 定义 Kantu Service、配置 schema 和基础工具
 - [x] 完成多仓工程发现与稳定项目身份
-- [ ] 跑通系统级事实底座生成与确定性校验
+- [x] 打包系统级机器契约、策略、提示与协议锁
+- [x] 跑通独立索引、只读证据采集、系统事实底座生成与确定性校验
 - [x] 提供无需真实模型 API 的插件和工具流水线测试
 
 ### 阶段二：项目级与可恢复编排
@@ -257,7 +288,7 @@ Kantu 的目标是提供一份更可信的认知起点，以及一条可以持�
 - [ ] 单项目隔离扫描
 - [ ] 工程类型识别与模板选择
 - [ ] 不可变任务快照、批次状态和失败恢复
-- [ ] Subagent Provider 接入
+- [x] Subagent Provider 接入（系统级只读证据 worker）
 - [ ] 项目级文档契约与质量门禁
 
 ### 阶段三：深入分析与系统地图

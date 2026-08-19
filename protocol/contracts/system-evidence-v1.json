@@ -1,0 +1,36 @@
+{
+  "contractId": "kantu/contract/system-evidence/v1",
+  "version": "1.1.0",
+  "bundleFields": ["protocolVersion", "generatedAt", "records"],
+  "recordFields": [
+    "projectKey",
+    "projectDir",
+    "mcpProject",
+    "status",
+    "projectTypeCandidates",
+    "entries",
+    "outboundDependencies",
+    "dataAssets",
+    "infrastructure",
+    "aliases",
+    "capabilityCandidates",
+    "evidencePaths",
+    "conflicts",
+    "scopeStatus",
+    "scopeViolations",
+    "failureReason"
+  ],
+  "collectionStates": ["COLLECTED", "FAILED", "SKIPPED"],
+  "scopeStates": ["CLEAN", "VIOLATION"],
+  "limits": {
+    "maxItemsPerField": 100,
+    "maxCharactersPerItem": 800
+  },
+  "rules": [
+    "Every discovered project has exactly one evidence record.",
+    "Evidence collection requires a fresh project index and stays inside that index scope.",
+    "Workers are read-only and never write the system document.",
+    "A clean worker returns scopeStatus CLEAN and an empty scopeViolations array; no-violation explanations never belong in that array.",
+    "Actual scope violations and sensitive values are recorded or redacted and block the downstream gate."
+  ]
+}

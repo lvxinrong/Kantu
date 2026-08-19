@@ -1,0 +1,13 @@
+{
+  "contractId": "kantu/contract/index-manifest/v1",
+  "version": "1.1.0",
+  "rootFields": ["protocolVersion", "generatedAt", "records"],
+  "recordFields": ["projectKey", "projectDir", "provider", "status", "reason", "mcpProject", "nodeCount", "edgeCount", "indexedAt"],
+  "freshnessStates": ["FRESH", "FAILED", "PENDING"],
+  "rules": [
+    "Every discovered project has exactly one index record.",
+    "Project keys and relative paths match the project registry.",
+    "An unavailable provider is recorded explicitly and never treated as fresh evidence.",
+    "A record becomes FRESH only after the provider reports the index as ready."
+  ]
+}

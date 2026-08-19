@@ -1,10 +1,21 @@
 - insert:
+    - id: kantu-codebase-memory
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: codebase_memory_mcp
+        transport: stdio
+        command: codebase-memory-mcp
+        toolCallTimeoutMs: 600000
+        failOnStartupError: false
     - id: kantu
       name: dsh-kantu
       config:
-        workspaceRoot: .
         outputDirectory: kantu_docs
         discoveryMaxDepth: 3
+        codebaseMemoryServerName: codebase_memory_mcp
+        indexMode: moderate
+        evidenceProvider: spawn
+        systemConcurrency: 4
         registerCommand: true
         registerSystemScanTool: true
         registerStatusTool: true
