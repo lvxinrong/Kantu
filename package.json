@@ -1,8 +1,9 @@
 {
   "name": "dsh-archscope",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Evidence-driven system architecture reconnaissance for DeepSeek Harness",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
@@ -18,6 +19,7 @@
     "lib/",
     "protocol/",
     "cordis.patch.yml",
+    "LICENSE",
     "README.md",
     "README.zh-CN.md"
   ],

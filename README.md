@@ -10,7 +10,7 @@ ArchScope helps AI agents genuinely take over an unfamiliar software system—no
 
 It brings source discovery, evidence collection, system modeling, project profiling, layer gates, parallel orchestration, deterministic validation, and an architecture portal into one recoverable, verifiable, and extensible scanning protocol, delivered as a native DeepSeek Harness plugin.
 
-**Project status: the source-level system scan is runnable end to end, but not yet published.** ArchScope can discover Git projects, build or reuse an independent codebase-memory index for each project, run isolated read-only evidence workers, synthesize a 22-section system fact base through one deterministic writer, and enforce gates over both machine-readable and Markdown artifacts. Runtime evidence, project scans, and resume orchestration are still under development.
+**Project status: v0.1.0 establishes the first runnable source-level system scan preview; the npm package is not yet published.** ArchScope can discover Git projects, build or reuse an independent codebase-memory index for each project, run isolated read-only evidence workers, synthesize a 22-section system fact base through one deterministic writer, and enforce gates over both machine-readable and Markdown artifacts. Runtime evidence, project scans, and resume orchestration are still under development.
 
 > **Core model: system-level analysis establishes the shared worldview; project-level analysis defines each engineering profile; module-level analysis defines responsibility boundaries; code-level analysis traces execution paths.**
 
@@ -324,7 +324,11 @@ At this stage, ArchScope needs careful discussion of problem boundaries and prot
 - Which code-intelligence Providers should be supported first?
 - How should we measure whether an architecture scan is trustworthy, rather than merely long?
 
-Interfaces, names, and directory layouts remain open for discussion before the first runnable release. Once a public contract exists, migration paths and compatibility notes will take priority.
+Interfaces, names, and directory layouts remain open for discussion before the first stable release. Once a public contract exists, migration paths and compatibility notes will take priority.
+
+## License
+
+ArchScope is released under the [MIT License](LICENSE).
 
 ## Acknowledgements
 
