@@ -10,11 +10,14 @@ import {
   type ProjectRegistry,
   type ProjectSystemEvidence,
   type SystemEvidenceBundle,
+  type SystemSynthesisDraft,
+  type SystemSynthesisRecord,
   type SystemValidationReport,
+  type ValidationStatus,
   type ValidationIssue,
 } from '../contracts/system-scan.js'
 import type { LoadedProtocolPack, ProtocolLock } from '../protocol/catalog.js'
-import { validateSystemDocument } from '../protocol/validation.js'
+import { activeProjectBlockers, validateSensitiveContent, validateSystemDocument } from '../protocol/validation.js'
 
 function markdownCell(value: string | number | null): string {
   if (value === null || value === '') return '待确认'
@@ -145,6 +148,7 @@ const SYSTEM_ARTIFACT_PATHS = [
   'system/evidence/index.json',
   'system/protocol-lock.json',
   'system/validation.json',
+  'system/synthesis.json',
   'system/diagrams/01-system-context.mmd',
   'system/diagrams/02-internal-relations.mmd',
   'system/diagrams/03-entry-overview.mmd',
@@ -156,26 +160,77 @@ export interface PreparedSystemArtifacts {
   protocolLock: ProtocolLock
 }
 
-export function prepareSystemArtifacts(
+export interface PreparedSynthesizedSystemArtifacts extends PreparedSystemArtifacts {
+  diagrams: SystemSynthesisDraft['diagrams']
+}
+
+function replaceMetadataValue(content: string, key: string, value: string): string {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  return content.replace(new RegExp(`(^\\|\\s*${escaped}\\s*\\|)\\s*[^|]*\\|`, 'mu'), `$1 ${value} |`)
+}
+
+function normalizeSystemMetadata(
+  content: string,
+  validation: Pick<SystemValidationReport, 'status' | 'gate'>,
+  sourceComplete: boolean,
+): string {
+  let normalized = replaceMetadataValue(content, '协议版本', SYSTEM_DOCUMENT_PROTOCOL)
+  normalized = replaceMetadataValue(normalized, '文档状态', validation.status === 'PASSED' && sourceComplete ? '完整' : '草稿')
+  normalized = replaceMetadataValue(normalized, '证据状态', sourceComplete ? '源码视角已完成，运行态待确认' : '证据不足')
+  normalized = replaceMetadataValue(normalized, '下层门禁', validation.gate)
+  normalized = replaceMetadataValue(normalized, '校验状态', validation.status)
+  return replaceMetadataValue(normalized, '项目级门禁', validation.gate)
+}
+
+function validateSynthesisDiagrams(diagrams: SystemSynthesisDraft['diagrams'], pack: LoadedProtocolPack): ValidationIssue[] {
+  const issues: ValidationIssue[] = []
+  for (const [name, content] of Object.entries(diagrams)) {
+    if (!/^\s*(?:flowchart|graph)\s/iu.test(content)) {
+      issues.push({ severity: 'ERROR', code: 'SYSTEM_DIAGRAM_INVALID', message: `${name} must be Mermaid flowchart source.` })
+    }
+    if (content.includes('```') || content.length > 50_000) {
+      issues.push({ severity: 'ERROR', code: 'SYSTEM_DIAGRAM_INVALID', message: `${name} contains a code fence or exceeds 50000 characters.` })
+    }
+    if (!/(?:实线[^\n]*源码证据|源码证据[^\n]*实线)/u.test(content)
+      || !/(?:虚线[^\n]*待确认|待确认[^\n]*虚线)/u.test(content)
+      || !/不代表生产运行/u.test(content)) {
+      issues.push({ severity: 'ERROR', code: 'SYSTEM_DIAGRAM_LEGEND_MISSING', message: `${name} must explain source-evidence, pending-inference, and production-runtime edge semantics.` })
+    }
+    issues.push(...validateSensitiveContent(content, pack, `${name} diagram`))
+  }
+  return issues
+}
+
+export function prepareSynthesizedSystemArtifacts(
   registry: ProjectRegistry,
   indexes: IndexManifest,
   evidence: SystemEvidenceBundle,
   generatedAt: string,
   pack: LoadedProtocolPack,
-): PreparedSystemArtifacts {
+  draft: SystemSynthesisDraft,
+): PreparedSynthesizedSystemArtifacts {
   const initial = validateSystemArtifacts(registry, indexes, generatedAt, evidence)
   const protocol = { packId: pack.lock.packId, version: pack.lock.version, digest: pack.lock.packDigest }
-  let validation: SystemValidationReport = { ...initial, protocol }
-  let factBase = renderSystemFactBase(registry, indexes, evidence, validation)
-  const documentIssues = validateSystemDocument(factBase, SYSTEM_ARTIFACT_PATHS, pack)
-  validation = {
-    ...validation,
-    status: [...validation.issues, ...documentIssues].some(issue => issue.severity === 'ERROR') ? 'FAILED' : 'PASSED',
-    gate: [...validation.issues, ...documentIssues].some(issue => issue.severity === 'ERROR') ? 'BLOCKED' : validation.gate,
-    issues: [...validation.issues, ...documentIssues],
-  }
-  factBase = renderSystemFactBase(registry, indexes, evidence, validation)
-  return { factBase, validation, protocolLock: pack.lock }
+  const sourceComplete = registry.projects.length > 0
+    && indexes.records.length === registry.projects.length
+    && indexes.records.every(record => record.status === 'FRESH')
+    && evidence.records.length === registry.projects.length
+    && evidence.records.every(record => record.status === 'COLLECTED' && record.scopeStatus === 'CLEAN' && record.scopeViolations.length === 0)
+  const semanticGate: GateStatus = initial.gate === 'READY' && activeProjectBlockers(draft.factBase).length === 0 ? 'READY' : 'BLOCKED'
+  let factBase = normalizeSystemMetadata(draft.factBase, { status: 'PASSED', gate: semanticGate }, sourceComplete)
+  const diagramIssues = validateSynthesisDiagrams(draft.diagrams, pack)
+  let documentIssues = validateSystemDocument(factBase, SYSTEM_ARTIFACT_PATHS, pack)
+  let issues = [...initial.issues, ...documentIssues, ...diagramIssues]
+  let status: ValidationStatus = issues.some(issue => issue.severity === 'ERROR') ? 'FAILED' : 'PASSED'
+  let gate: GateStatus = status === 'PASSED' ? semanticGate : 'BLOCKED'
+  factBase = normalizeSystemMetadata(draft.factBase, { status, gate }, sourceComplete)
+  documentIssues = validateSystemDocument(factBase, SYSTEM_ARTIFACT_PATHS, pack)
+  issues = [...initial.issues, ...documentIssues, ...diagramIssues]
+  status = issues.some(issue => issue.severity === 'ERROR') ? 'FAILED' : 'PASSED'
+  gate = status === 'PASSED' ? semanticGate : 'BLOCKED'
+  const validation: SystemValidationReport = { ...initial, protocol, status, gate, issues }
+  factBase = normalizeSystemMetadata(draft.factBase, validation, sourceComplete)
+  return { factBase, diagrams: draft.diagrams, validation, protocolLock: pack.lock }
 }
 
 function summarizeText(value: string, maxLength = 280): string {
@@ -482,7 +537,7 @@ export function renderSystemFactBase(
   ])
   return `# 00-系统级事实底座
 
-> 系统级定世界观，项目级定工程画像，模块级定职责边界，代码级定执行链路。
+> 系统级定世界观，项目级定工程画像，模块级定内部边界，代码级定具体链路。
 
 模块分析横向梳理能力与职责，代码分析纵向追踪真实执行路径。
 
@@ -682,6 +737,7 @@ export function renderSystemContextDiagram(projects: ProjectRecord[], evidence?:
     ? '  U -. 运行态待确认 .-> E0\n  E0 -. 源码候选 .-> S'
     : external.map((_surface, index) => `  U -. 运行态待确认 .-> E${index}\n  E${index} -. 源码候选 .-> S`).join('\n')
   return `flowchart LR
+  L["图例：实线=源码证据；虚线=待确认推断；不代表生产运行"]
   U["用户 / 外部系统"]
   subgraph K["源码视角系统边界 · ${projects.length} 个工程"]
 ${entryNodes}
@@ -709,6 +765,7 @@ export function renderInternalRelationsDiagram(projects: ProjectRecord[], eviden
     return caller === undefined || target === undefined ? [] : [`  P${caller} -. 出站依赖名称匹配 .-> P${target}`]
   })
   return `flowchart LR
+  L["图例：实线=源码证据；虚线=待确认推断；不代表生产运行"]
 ${nodes || '  N["工程间关系：当前未发现稳定候选"]'}
 ${edges.join('\n')}
   B["仅为源码候选 · 运行态待确认"]
@@ -728,6 +785,7 @@ export function renderEntryOverviewDiagram(projects: ProjectRecord[], evidence?:
     ? '  U -. 待确认 .-> E0\n  E0 -. 源码候选 .-> S'
     : external.map((_surface, index) => `  U --> E${index}\n  E${index} -. 源码候选 .-> S`).join('\n')
   return `flowchart LR
+  L["图例：实线=源码证据；虚线=待确认推断；不代表生产运行"]
   U["用户 / 外部系统"]
 ${entryNodes}
   S["服务与 API 边界<br/>${services.reduce((count, surface) => count + surface.projects.length, 0)} 个工程候选"]
@@ -739,28 +797,44 @@ ${entryEdges}
 `
 }
 
-export interface WriteSystemArtifactsOptions {
+export interface WriteSystemEvidenceArtifactsOptions {
   outputRoot: string
   registry: ProjectRegistry
   indexes: IndexManifest
   evidence: SystemEvidenceBundle
-  validation: SystemValidationReport
-  factBase: string
   protocolLock: ProtocolLock
 }
 
-export async function writeSystemArtifacts(options: WriteSystemArtifactsOptions): Promise<void> {
+export async function writeSystemEvidenceArtifacts(options: WriteSystemEvidenceArtifactsOptions): Promise<void> {
   const systemRoot = path.join(options.outputRoot, 'system')
   await Promise.all([
     atomicWriteJson(path.join(systemRoot, 'project-registry.json'), options.registry),
     atomicWriteJson(path.join(systemRoot, 'index-manifest.json'), options.indexes),
     atomicWriteJson(path.join(systemRoot, 'evidence', 'index.json'), options.evidence),
     ...options.evidence.records.map(record => atomicWriteJson(path.join(systemRoot, 'evidence', `${record.projectKey}.json`), record)),
-    atomicWriteJson(path.join(systemRoot, 'validation.json'), options.validation),
     atomicWriteJson(path.join(systemRoot, 'protocol-lock.json'), options.protocolLock),
+  ])
+}
+
+export interface WriteSynthesizedSystemArtifactsOptions extends WriteSystemEvidenceArtifactsOptions, PreparedSynthesizedSystemArtifacts {
+  synthesis: SystemSynthesisRecord
+}
+
+export async function writeSynthesizedSystemArtifacts(options: WriteSynthesizedSystemArtifactsOptions): Promise<void> {
+  await writeSystemEvidenceArtifacts(options)
+  const systemRoot = path.join(options.outputRoot, 'system')
+  const attemptRoot = path.join(options.outputRoot, 'runs', options.synthesis.runId, 'synthesis', `attempt-${options.synthesis.attempt}`)
+  await Promise.all([
+    atomicWriteJson(path.join(systemRoot, 'validation.json'), options.validation),
+    atomicWriteJson(path.join(systemRoot, 'synthesis.json'), options.synthesis),
     atomicWrite(path.join(systemRoot, '00-system-fact-base.md'), options.factBase),
-    atomicWrite(path.join(systemRoot, 'diagrams', '01-system-context.mmd'), renderSystemContextDiagram(options.registry.projects, options.evidence)),
-    atomicWrite(path.join(systemRoot, 'diagrams', '02-internal-relations.mmd'), renderInternalRelationsDiagram(options.registry.projects, options.evidence)),
-    atomicWrite(path.join(systemRoot, 'diagrams', '03-entry-overview.mmd'), renderEntryOverviewDiagram(options.registry.projects, options.evidence)),
+    atomicWrite(path.join(systemRoot, 'diagrams', '01-system-context.mmd'), options.diagrams.systemContext),
+    atomicWrite(path.join(systemRoot, 'diagrams', '02-internal-relations.mmd'), options.diagrams.internalRelations),
+    atomicWrite(path.join(systemRoot, 'diagrams', '03-entry-overview.mmd'), options.diagrams.entryOverview),
+    atomicWriteJson(path.join(attemptRoot, 'attempt.json'), { ...options.synthesis, validation: options.validation }),
+    atomicWrite(path.join(attemptRoot, '00-system-fact-base.md'), options.factBase),
+    atomicWrite(path.join(attemptRoot, 'diagrams', '01-system-context.mmd'), options.diagrams.systemContext),
+    atomicWrite(path.join(attemptRoot, 'diagrams', '02-internal-relations.mmd'), options.diagrams.internalRelations),
+    atomicWrite(path.join(attemptRoot, 'diagrams', '03-entry-overview.mmd'), options.diagrams.entryOverview),
   ])
 }

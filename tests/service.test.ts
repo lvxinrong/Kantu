@@ -5,12 +5,19 @@ import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { ArchScopeStatusResult, ProjectRegistry, SystemScanResult, SystemScanRunState, SystemValidationReport } from '../src/contracts/system-scan.js'
+import type { ArchScopeStatusResult, IndexManifest, ProjectRegistry, SystemEvidenceBundle, SystemScanResult, SystemScanRunState, SystemValidationReport } from '../src/contracts/system-scan.js'
 import type { ProtocolLock } from '../src/protocol/catalog.js'
 import { ArchScopeService } from '../src/service.js'
 import type { SystemAnalyzer } from '../src/system/analyzer.js'
 import { createStatusTool } from '../src/tools/status.js'
 import { createSystemScanTool } from '../src/tools/system-scan.js'
+import {
+  renderEntryOverviewDiagram,
+  renderInternalRelationsDiagram,
+  renderSystemContextDiagram,
+  renderSystemFactBase,
+  validateSystemArtifacts,
+} from '../src/system/artifacts.js'
 
 const temporaryRoots: string[] = []
 
@@ -65,6 +72,26 @@ function completeAnalyzer(): SystemAnalyzer {
   }
 }
 
+async function commitFixtureSynthesis(service: ArchScopeService, workspaceRoot: string, runId: string) {
+  await service.getSystemSynthesisContext(runId)
+  const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
+  const indexes = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/index-manifest.json'), 'utf8')) as IndexManifest
+  const evidence = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/evidence/index.json'), 'utf8')) as SystemEvidenceBundle
+  const validation = validateSystemArtifacts(registry, indexes, registry.generatedAt, evidence)
+  return service.commitSystemSynthesis({
+    runId,
+    writer: { kind: 'dsh-main-agent', sessionId: 'test-session', provider: 'test', model: 'test-model' },
+    draft: {
+      factBase: renderSystemFactBase(registry, indexes, evidence, validation),
+      diagrams: {
+        systemContext: renderSystemContextDiagram(registry.projects, evidence),
+        internalRelations: renderInternalRelationsDiagram(registry.projects, evidence),
+        entryOverview: renderEntryOverviewDiagram(registry.projects, evidence),
+      },
+    },
+  })
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
@@ -82,9 +109,15 @@ describe('ArchScopeService system scan', () => {
       registerStatusTool: false,
     }, analyzer)
 
-    const result = await service.scanSystem()
+    const pending = await service.scanSystem()
+    const context = await service.getSystemSynthesisContext(pending.runId)
+    const pendingRegistry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
+    const projectKey = pendingRegistry.projects[0]?.projectKey as string
+    const projectEvidence = await service.getSystemProjectEvidence(pending.runId, { projectKeys: [projectKey] })
+    const result = await commitFixtureSynthesis(service, workspaceRoot, pending.runId)
     const evidence = await readFile(path.join(workspaceRoot, 'archscope_docs/system/evidence/index.json'), 'utf8')
     const factBase = await readFile(path.join(workspaceRoot, 'archscope_docs/system/00-system-fact-base.md'), 'utf8')
+    const synthesis = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/synthesis.json'), 'utf8')) as { writer: { kind: string, sessionId: string }, inputDigest: string, outputDigest: string }
 
     expect(result).toMatchObject({
       status: 'COMPLETED',
@@ -96,8 +129,72 @@ describe('ArchScopeService system scan', () => {
       scopeViolationCount: 0,
     })
     expect(evidence).toContain('Web entry')
+    expect(context.prompt).toContain('当前 DeepSeek Harness 会话的系统级主写者')
+    expect(context.prompt).toContain('Web entry')
+    expect(context.prompt).toContain('archscope_get_system_project_evidence')
+    expect(projectEvidence.evidenceJson).toContain('Web entry')
+    expect(projectEvidence.projectKeys).toEqual([projectKey])
     expect(factBase).toContain('| 文档状态 | 完整 |')
     expect(factBase).toContain('| 下层门禁 | READY |')
+    expect(synthesis.writer).toEqual(expect.objectContaining({ kind: 'dsh-main-agent', sessionId: 'test-session' }))
+    expect(synthesis.inputDigest).toMatch(/^[a-f0-9]{64}$/u)
+    expect(synthesis.outputDigest).toMatch(/^[a-f0-9]{64}$/u)
+  })
+
+  it('allows the main agent one deterministic repair after an invalid synthesis', async () => {
+    const workspaceRoot = await fixtureWorkspace()
+    const service = new ArchScopeService(new Context(), {
+      workspaceRoot,
+      outputDirectory: 'archscope_docs',
+      discoveryMaxDepth: 3,
+      registerCommand: false,
+      registerSystemScanTool: false,
+      registerStatusTool: false,
+    }, completeAnalyzer())
+
+    const pending = await service.scanSystem()
+    await service.getSystemSynthesisContext(pending.runId)
+    const invalid = await service.commitSystemSynthesis({
+      runId: pending.runId,
+      writer: { kind: 'dsh-main-agent', sessionId: 'test-session' },
+      draft: {
+        factBase: '# invalid',
+        diagrams: { systemContext: 'invalid', internalRelations: 'invalid', entryOverview: 'invalid' },
+      },
+    })
+    const repaired = await commitFixtureSynthesis(service, workspaceRoot, pending.runId)
+    const firstAttempt = JSON.parse(await readFile(path.join(workspaceRoot, `archscope_docs/runs/${pending.runId}/synthesis/attempt-1/attempt.json`), 'utf8')) as { attempt: number, validation: SystemValidationReport }
+    const secondAttempt = JSON.parse(await readFile(path.join(workspaceRoot, `archscope_docs/runs/${pending.runId}/synthesis/attempt-2/attempt.json`), 'utf8')) as { attempt: number, validation: SystemValidationReport }
+    const firstDraft = await readFile(path.join(workspaceRoot, `archscope_docs/runs/${pending.runId}/synthesis/attempt-1/00-system-fact-base.md`), 'utf8')
+
+    expect(invalid).toMatchObject({ status: 'SYNTHESIZING', validation: 'FAILED', synthesisAttempt: 1, retryAllowed: true })
+    expect(invalid.issues.some(issue => issue.code === 'SYSTEM_HEADINGS_INVALID')).toBe(true)
+    expect(repaired).toMatchObject({ status: 'COMPLETED', validation: 'PASSED', synthesisAttempt: 2, retryAllowed: false })
+    expect(firstAttempt).toMatchObject({ attempt: 1, validation: { status: 'FAILED' } })
+    expect(secondAttempt).toMatchObject({ attempt: 2, validation: { status: 'PASSED' } })
+    expect(firstDraft).toContain('# invalid')
+  })
+
+  it('bounds targeted synthesis evidence retrieval to known persisted projects', async () => {
+    const workspaceRoot = await fixtureWorkspace()
+    const service = new ArchScopeService(new Context(), {
+      workspaceRoot,
+      outputDirectory: 'archscope_docs',
+      discoveryMaxDepth: 3,
+      registerCommand: false,
+      registerSystemScanTool: false,
+      registerStatusTool: false,
+    }, completeAnalyzer())
+    const pending = await service.scanSystem()
+    const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
+    const projectKey = registry.projects[0]?.projectKey as string
+
+    const evidence = await service.getSystemProjectEvidence(pending.runId, { projectKeys: [projectKey, 'missing'] })
+
+    expect(evidence.projectKeys).toEqual([projectKey])
+    expect(evidence.missingProjectKeys).toEqual(['missing'])
+    expect(JSON.parse(evidence.evidenceJson)).toHaveLength(1)
+    await expect(service.getSystemProjectEvidence(pending.runId, { projectKeys: [] })).rejects.toThrow('between 1 and 8')
   })
 
   it('persists a truthful draft, run state, and deterministic validation', async () => {
@@ -111,7 +208,8 @@ describe('ArchScopeService system scan', () => {
       registerStatusTool: true,
     })
 
-    const first = await service.scanSystem()
+    const pending = await service.scanSystem()
+    const first = await commitFixtureSynthesis(service, workspaceRoot, pending.runId)
     const second = await service.scanSystem()
     const status = await service.status(first.runId)
     const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
@@ -120,6 +218,11 @@ describe('ArchScopeService system scan', () => {
     const runState = JSON.parse(await readFile(path.join(workspaceRoot, `archscope_docs/runs/${first.runId}/state.json`), 'utf8')) as SystemScanRunState
     const factBase = await readFile(path.join(workspaceRoot, 'archscope_docs/system/00-system-fact-base.md'), 'utf8')
 
+    expect(pending).toMatchObject({
+      status: 'AWAITING_SYNTHESIS',
+      gate: 'BLOCKED',
+      validation: 'NOT_RUN',
+    })
     expect(first).toMatchObject({
       status: 'BLOCKED',
       gate: 'BLOCKED',
@@ -137,7 +240,7 @@ describe('ArchScopeService system scan', () => {
     expect(validation.issues.map(issue => issue.code)).toContain('RUNTIME_EVIDENCE_MISSING')
     expect(validation.protocol?.digest).toBe(protocolLock.packDigest)
     expect(runState.protocol.digest).toBe(protocolLock.packDigest)
-    expect(factBase).toContain('系统级定世界观，项目级定工程画像，模块级定职责边界，代码级定执行链路')
+    expect(factBase).toContain('系统级定世界观，项目级定工程画像，模块级定内部边界，代码级定具体链路')
     expect(factBase).toContain('源码存在不代表生产启用')
   })
 
@@ -176,8 +279,8 @@ describe('ArchScopeService system scan', () => {
     const scan = await createSystemScanTool(service).execute({ refresh: false }, execution) as SystemScanResult
     const status = await createStatusTool(service).execute({ runId: scan.runId }, execution) as ArchScopeStatusResult
 
-    expect(scan).toMatchObject({ status: 'BLOCKED', gate: 'BLOCKED', projectCount: 1 })
-    expect(status).toMatchObject({ found: true, runId: scan.runId, validation: 'PASSED' })
+    expect(scan).toMatchObject({ status: 'AWAITING_SYNTHESIS', gate: 'BLOCKED', projectCount: 1 })
+    expect(status).toMatchObject({ found: true, runId: scan.runId, validation: 'NOT_RUN' })
   })
 
   it('uses the invoking DeepSeek Harness session workspace when no override is configured', async () => {

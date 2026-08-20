@@ -1,6 +1,6 @@
 {
   "contractId": "archscope/contract/layer-state-machine/v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "documentStates": ["完整", "草稿"],
   "evidenceStates": ["运行态已确认", "运行态部分确认，人工待确认", "源码视角已完成，运行态待确认", "证据不足"],
   "gateStates": ["READY", "BLOCKED"],
@@ -13,5 +13,10 @@
       "下层门禁": ["READY"],
       "校验状态": ["PASSED"]
     }
+  },
+  "semanticBlockers": {
+    "section": "## 16. 关键待确认问题分级",
+    "class": "阻断项目级",
+    "readyRequiresNoActiveBlocker": true
   }
 }

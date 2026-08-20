@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import { SYSTEM_SCAN_PROTOCOL, type IndexManifest, type ProjectRegistry, type SystemEvidenceBundle } from '../src/contracts/system-scan.js'
+import { loadProtocolPack } from '../src/protocol/catalog.js'
 import {
+  prepareSynthesizedSystemArtifacts,
   renderEntryOverviewDiagram,
   renderInternalRelationsDiagram,
   renderSystemContextDiagram,
@@ -158,5 +160,45 @@ describe('validateSystemArtifacts', () => {
     expect(diagram).toContain('Web/H5 前端<br/>web')
     expect(diagram).not.toContain('微信小程序<br/>backend')
     expect(diagram).toContain('服务 / API 边界候选<br/>1 个工程')
+  })
+
+  it('keeps a valid document blocked when it declares an active project-level blocker', async () => {
+    const generatedAt = '2026-08-19T00:00:00.000Z'
+    const registry: ProjectRegistry = {
+      protocolVersion: SYSTEM_SCAN_PROTOCOL,
+      generatedAt,
+      workspaceRoot: '.',
+      discoveryMaxDepth: 3,
+      projectCount: 1,
+      skippedDirectories: [],
+      projects: [{ projectKey: 'service', projectName: 'service', projectDir: 'service', gitHead: null, projectType: 'java-project', classificationEvidence: ['pom.xml'], productionStatus: 'UNCONFIRMED' }],
+    }
+    const indexes: IndexManifest = {
+      protocolVersion: SYSTEM_SCAN_PROTOCOL,
+      generatedAt,
+      records: [{ projectKey: 'service', projectDir: 'service', provider: 'codebase-memory-mcp', status: 'FRESH', reason: 'ready' }],
+    }
+    const evidence: SystemEvidenceBundle = {
+      protocolVersion: SYSTEM_SCAN_PROTOCOL,
+      generatedAt,
+      records: [{
+        projectKey: 'service', projectDir: 'service', status: 'COLLECTED', projectTypeCandidates: ['Spring service'], entries: ['REST API'], outboundDependencies: [], dataAssets: [], infrastructure: [], aliases: [], capabilityCandidates: ['service capability'], evidencePaths: ['pom.xml'], conflicts: [], scopeStatus: 'CLEAN', scopeViolations: [],
+      }],
+    }
+    const initial = validateSystemArtifacts(registry, indexes, generatedAt, evidence)
+    const factBase = renderSystemFactBase(registry, indexes, evidence, initial).replace('当前无源码视角阻断项', '重复工程归属尚未仲裁')
+    const prepared = prepareSynthesizedSystemArtifacts(registry, indexes, evidence, generatedAt, await loadProtocolPack(), {
+      factBase,
+      diagrams: {
+        systemContext: renderSystemContextDiagram(registry.projects, evidence),
+        internalRelations: renderInternalRelationsDiagram(registry.projects, evidence),
+        entryOverview: renderEntryOverviewDiagram(registry.projects, evidence),
+      },
+    })
+
+    expect(prepared.validation).toMatchObject({ status: 'PASSED', gate: 'BLOCKED' })
+    expect(prepared.validation.issues.map(issue => issue.code)).toContain('PROJECT_GATE_BLOCKED_BY_DOCUMENT')
+    expect(prepared.factBase).toContain('| 下层门禁 | BLOCKED |')
+    expect(prepared.factBase).toContain('| 项目级门禁 | BLOCKED |')
   })
 })

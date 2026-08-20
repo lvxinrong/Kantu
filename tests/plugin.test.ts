@@ -39,7 +39,13 @@ describe('ArchScope plugin registration', () => {
 
     expect(commands.map(command => command.name)).toEqual(['archscope'])
     expect(commands[0]?.input?.hint).toContain('system')
-    expect(tools.map(tool => tool.name).sort()).toEqual(['archscope_scan_system', 'archscope_status'])
+    expect(tools.map(tool => tool.name).sort()).toEqual([
+      'archscope_commit_system_synthesis',
+      'archscope_get_system_project_evidence',
+      'archscope_get_system_synthesis_context',
+      'archscope_scan_system',
+      'archscope_status',
+    ])
   })
 
   it('can disable both interaction surfaces through config', () => {

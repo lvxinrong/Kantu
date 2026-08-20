@@ -1,6 +1,6 @@
 {
   "contractId": "archscope/contract/system-document/v1",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "metadata": {
     "协议版本": ["archscope/contract/system-document/v1"],
     "文档状态": ["完整", "草稿"],
@@ -39,6 +39,7 @@
     "system/evidence/index.json",
     "system/protocol-lock.json",
     "system/validation.json",
+    "system/synthesis.json",
     "system/diagrams/01-system-context.mmd",
     "system/diagrams/02-internal-relations.mmd",
     "system/diagrams/03-entry-overview.mmd"

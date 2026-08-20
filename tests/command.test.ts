@@ -47,9 +47,9 @@ describe('executeArchScopeIntent', () => {
     async scanSystem() {
       return {
         runId: 'system-1',
-        status: 'BLOCKED',
+        status: 'AWAITING_SYNTHESIS',
         gate: 'BLOCKED',
-        validation: 'PASSED',
+        validation: 'NOT_RUN',
         projectCount: 2,
         indexedProjectCount: 2,
         evidenceProjectCount: 1,
@@ -88,10 +88,10 @@ describe('executeArchScopeIntent', () => {
     })
   })
 
-  it('executes the system scan and reports its blocked evidence gate', async () => {
+  it('executes the system scan and hands evidence to the current main agent', async () => {
     await expect(executeArchScopeIntent({ kind: 'system.scan', refresh: false }, runtime)).resolves.toEqual({
       kind: 'success',
-      text: expect.stringContaining('system analysis awaiting source evidence'),
+      text: expect.stringContaining('awaiting current main-agent system synthesis'),
     })
   })
 
@@ -116,7 +116,7 @@ describe('executeArchScopeIntent', () => {
     expect(statusWorkspace).toBe('/workspace/current')
   })
 
-  it('runs system scans deterministically while publishing visible start and completion messages', async () => {
+  it('runs evidence collection while publishing visible start and main-agent handoff messages', async () => {
     const queued: unknown[] = []
     let scanWorkspace: string | undefined
     let refresh: boolean | undefined
@@ -143,7 +143,7 @@ describe('executeArchScopeIntent', () => {
 
     expect(result).toMatchObject({
       kind: 'success',
-      text: expect.stringContaining('ArchScope system scan completed'),
+      text: expect.stringContaining('awaiting current main-agent system synthesis'),
     })
     expect(scanWorkspace).toBe('/workspace/current')
     expect(refresh).toBe(true)
@@ -167,11 +167,11 @@ describe('executeArchScopeIntent', () => {
         kind: 'plugin',
         plugin: 'archscope',
         form: 'notice',
-        summary: 'ArchScope 系统级扫描结束 · 1/2 个工程已取证 · BLOCKED',
+      summary: 'ArchScope 主 Agent 综合 · 1/2 个工程证据已就绪',
       },
       content: [{
         type: 'text',
-        text: expect.stringContaining('Do not describe the aggregate validation field as structure-only validation'),
+        text: expect.stringContaining('archscope_get_system_synthesis_context'),
       }],
     })
   })

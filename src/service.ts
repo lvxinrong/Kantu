@@ -10,15 +10,32 @@ import {
   SYSTEM_SCAN_PROTOCOL,
   type ArchScopeStatusResult,
   type ProjectRegistry,
+  type IndexManifest,
+  type SystemEvidenceBundle,
   type SystemScanResult,
   type SystemScanRunState,
   type SystemScanProgress,
   type SystemScanStatus,
+  type SystemSynthesisCommitResult,
+  type SystemSynthesisContext,
+  type SystemProjectEvidenceContext,
+  type SystemSynthesisDraft,
+  type SystemSynthesisWriter,
 } from './contracts/system-scan.js'
 import { loadProtocolPack } from './protocol/catalog.js'
-import { atomicWriteJson, prepareSystemArtifacts, writeSystemArtifacts } from './system/artifacts.js'
+import {
+  atomicWriteJson,
+  prepareSynthesizedSystemArtifacts,
+  writeSystemEvidenceArtifacts,
+  writeSynthesizedSystemArtifacts,
+} from './system/artifacts.js'
 import { DshSystemAnalyzer, type SystemAnalyzer } from './system/analyzer.js'
 import { discoverProjects } from './system/discovery.js'
+import {
+  buildSystemSynthesisContext,
+  systemSynthesisInputDigest,
+  systemSynthesisOutputDigest,
+} from './system/synthesis.js'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -27,7 +44,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 function reusable(status: SystemScanStatus): boolean {
-  return status === 'COMPLETED'
+  return status === 'COMPLETED' || status === 'AWAITING_SYNTHESIS' || status === 'SYNTHESIZING'
 }
 
 function errorMessage(error: unknown): string {
@@ -61,6 +78,20 @@ export interface ScanSystemOptions {
 
 export interface StatusOptions {
   workspaceRoot?: string
+}
+
+export interface SynthesisOptions {
+  workspaceRoot?: string
+}
+
+export interface SystemProjectEvidenceOptions extends SynthesisOptions {
+  projectKeys: string[]
+}
+
+export interface CommitSystemSynthesisOptions extends SynthesisOptions {
+  runId: string
+  draft: SystemSynthesisDraft
+  writer: SystemSynthesisWriter
 }
 
 interface ResolvedWorkspace {
@@ -119,6 +150,119 @@ export class ArchScopeService extends Service {
       evidenceProjectCount: state.evidenceProjectCount ?? 0,
       scopeViolationCount: state.scopeViolationCount ?? 0,
       outputDirectory: state.outputDirectory,
+    }
+  }
+
+  async getSystemSynthesisContext(runId: string, options: SynthesisOptions = {}): Promise<SystemSynthesisContext> {
+    const workspace = this.resolveWorkspace(options.workspaceRoot)
+    const state = await this.readRunState(workspace.outputRoot, runId)
+    if (state === undefined) throw new Error(`ArchScope run was not found: ${runId}`)
+    if (state.status !== 'AWAITING_SYNTHESIS' && state.status !== 'SYNTHESIZING') {
+      throw new Error(`ArchScope run ${runId} is ${state.status}; synthesis context is available only for a pending system writer.`)
+    }
+    const pack = await loadProtocolPack()
+    if (state.protocol.digest !== pack.lock.packDigest) {
+      throw new Error('ArchScope protocol changed after evidence collection; start a refreshed system scan.')
+    }
+    const { registry, indexes, evidence } = await this.readSystemInputs(workspace.outputRoot)
+    const inputDigest = systemSynthesisInputDigest(registry, indexes, evidence)
+    if (state.synthesisInputDigest === undefined || state.synthesisInputDigest !== inputDigest) {
+      throw new Error('ArchScope evidence no longer matches this run; start or resume the latest system scan.')
+    }
+    if (state.status === 'AWAITING_SYNTHESIS') {
+      await this.transition(workspace.outputRoot, state, 'SYNTHESIZING')
+    }
+    return buildSystemSynthesisContext(runId, pack, registry, indexes, evidence)
+  }
+
+  async getSystemProjectEvidence(runId: string, options: SystemProjectEvidenceOptions): Promise<SystemProjectEvidenceContext> {
+    const workspace = this.resolveWorkspace(options.workspaceRoot)
+    const state = await this.readRunState(workspace.outputRoot, runId)
+    if (state === undefined) throw new Error(`ArchScope run was not found: ${runId}`)
+    if (state.status !== 'AWAITING_SYNTHESIS' && state.status !== 'SYNTHESIZING') {
+      throw new Error(`ArchScope run ${runId} is ${state.status}; project evidence is available only during pending synthesis.`)
+    }
+    const projectKeys = [...new Set(options.projectKeys.map(key => key.trim()).filter(Boolean))]
+    if (projectKeys.length === 0 || projectKeys.length > 8) {
+      throw new Error('ArchScope project evidence retrieval requires between 1 and 8 unique project keys.')
+    }
+    const pack = await loadProtocolPack()
+    if (state.protocol.digest !== pack.lock.packDigest) {
+      throw new Error('ArchScope protocol changed after evidence collection; start a refreshed system scan.')
+    }
+    const { registry, indexes, evidence } = await this.readSystemInputs(workspace.outputRoot)
+    const inputDigest = systemSynthesisInputDigest(registry, indexes, evidence)
+    if (state.synthesisInputDigest === undefined || state.synthesisInputDigest !== inputDigest) {
+      throw new Error('ArchScope evidence no longer matches this run; start or resume the latest system scan.')
+    }
+    const byKey = new Map(evidence.records.map(record => [record.projectKey, record]))
+    const records = projectKeys.flatMap(key => {
+      const record = byKey.get(key)
+      return record === undefined ? [] : [record]
+    })
+    return {
+      runId,
+      protocolDigest: pack.lock.packDigest,
+      projectKeys: records.map(record => record.projectKey),
+      missingProjectKeys: projectKeys.filter(key => !byKey.has(key)),
+      evidenceJson: JSON.stringify(records),
+    }
+  }
+
+  async commitSystemSynthesis(options: CommitSystemSynthesisOptions): Promise<SystemSynthesisCommitResult> {
+    const workspace = this.resolveWorkspace(options.workspaceRoot)
+    const state = await this.readRunState(workspace.outputRoot, options.runId)
+    if (state === undefined) throw new Error(`ArchScope run was not found: ${options.runId}`)
+    if (state.status !== 'AWAITING_SYNTHESIS' && state.status !== 'SYNTHESIZING') {
+      throw new Error(`ArchScope run ${options.runId} is ${state.status}; it does not accept a system synthesis.`)
+    }
+    const pack = await loadProtocolPack()
+    if (state.protocol.digest !== pack.lock.packDigest) {
+      throw new Error('ArchScope protocol changed after evidence collection; start a refreshed system scan.')
+    }
+    const { registry, indexes, evidence } = await this.readSystemInputs(workspace.outputRoot)
+    const inputDigest = systemSynthesisInputDigest(registry, indexes, evidence)
+    if (state.synthesisInputDigest === undefined || state.synthesisInputDigest !== inputDigest) {
+      throw new Error('ArchScope evidence no longer matches this run; start or resume the latest system scan.')
+    }
+    const attempt = (state.synthesisAttempts ?? 0) + 1
+    const generatedAt = new Date().toISOString()
+    const prepared = prepareSynthesizedSystemArtifacts(registry, indexes, evidence, generatedAt, pack, options.draft)
+    const synthesis = {
+      protocolVersion: SYSTEM_SCAN_PROTOCOL,
+      runId: options.runId,
+      generatedAt,
+      writer: options.writer,
+      attempt,
+      protocolDigest: pack.lock.packDigest,
+      inputDigest,
+      outputDigest: systemSynthesisOutputDigest(options.draft),
+    } as const
+    await writeSynthesizedSystemArtifacts({
+      outputRoot: workspace.outputRoot,
+      registry,
+      indexes,
+      evidence,
+      synthesis,
+      ...prepared,
+    })
+    const retryAllowed = prepared.validation.status === 'FAILED' && attempt < 2
+    const nextStatus: SystemScanStatus = retryAllowed
+      ? 'SYNTHESIZING'
+      : prepared.validation.status === 'FAILED' || prepared.validation.gate === 'BLOCKED'
+        ? 'BLOCKED'
+        : 'COMPLETED'
+    const next = await this.transition(workspace.outputRoot, state, nextStatus, {
+      synthesisAttempts: attempt,
+      validation: prepared.validation.status,
+      gate: prepared.validation.gate,
+      ...retryAllowed ? {} : { finishedAt: generatedAt },
+    })
+    return {
+      ...this.toResult(next, false),
+      synthesisAttempt: attempt,
+      retryAllowed,
+      issues: prepared.validation.issues,
     }
   }
 
@@ -223,21 +367,22 @@ export class ArchScopeService extends Service {
         total: discovery.projects.length,
       })
       const evidence = await this.analyzer.collectEvidence(discovery.projects, indexes, analyzerOptions)
-      state = await this.transition(workspace.outputRoot, state, 'BUILDING_FACT_BASE', {
+      await writeSystemEvidenceArtifacts({
+        outputRoot: workspace.outputRoot,
+        registry,
+        indexes,
+        evidence,
+        protocolLock: protocolPack.lock,
+      })
+      state = await this.transition(workspace.outputRoot, state, 'AWAITING_SYNTHESIS', {
         evidenceProjectCount: evidence.records.filter(record => record.status === 'COLLECTED').length,
         scopeViolationCount: evidence.records.reduce((total, record) => total + Math.max(
           record.scopeViolations.length,
           record.scopeStatus === 'VIOLATION' ? 1 : 0,
         ), 0),
+        synthesisInputDigest: systemSynthesisInputDigest(registry, indexes, evidence),
       })
-      options.onProgress?.({ stage: 'BUILDING_FACT_BASE', message: '证据采集阶段结束，系统单写者开始综合事实底座' })
-      const prepared = prepareSystemArtifacts(registry, indexes, evidence, generatedAt, protocolPack)
-      const validation = prepared.validation
-      await writeSystemArtifacts({ outputRoot: workspace.outputRoot, registry, indexes, evidence, ...prepared })
-      state = await this.transition(workspace.outputRoot, state, 'VALIDATING', { validation: validation.status, gate: validation.gate })
-      state = await this.transition(workspace.outputRoot, state, validation.gate === 'READY' ? 'COMPLETED' : 'BLOCKED', {
-        finishedAt: new Date().toISOString(),
-      })
+      options.onProgress?.({ stage: 'AWAITING_SYNTHESIS', message: '单工程证据已持久化，等待当前主 Agent 综合系统世界观' })
       return this.toResult(state, false)
     } catch (error) {
       state = await this.transition(workspace.outputRoot, state, 'FAILED', {
@@ -271,6 +416,24 @@ export class ArchScopeService extends Service {
   private async writeRunState(outputRoot: string, state: SystemScanRunState): Promise<void> {
     await atomicWriteJson(path.join(outputRoot, 'runs', state.runId, 'state.json'), state)
     await atomicWriteJson(path.join(outputRoot, 'runs', 'latest.json'), { runId: state.runId })
+  }
+
+  private async readSystemInputs(outputRoot: string): Promise<{
+    registry: ProjectRegistry
+    indexes: IndexManifest
+    evidence: SystemEvidenceBundle
+  }> {
+    const systemRoot = path.join(outputRoot, 'system')
+    const [registry, indexes, evidence] = await Promise.all([
+      readFile(path.join(systemRoot, 'project-registry.json'), 'utf8'),
+      readFile(path.join(systemRoot, 'index-manifest.json'), 'utf8'),
+      readFile(path.join(systemRoot, 'evidence', 'index.json'), 'utf8'),
+    ])
+    return {
+      registry: JSON.parse(registry) as ProjectRegistry,
+      indexes: JSON.parse(indexes) as IndexManifest,
+      evidence: JSON.parse(evidence) as SystemEvidenceBundle,
+    }
   }
 
   private async readRunState(outputRoot: string, runId?: string): Promise<SystemScanRunState | undefined> {

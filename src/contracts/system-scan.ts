@@ -11,6 +11,8 @@ export type SystemScanStatus =
   | 'DISCOVERING'
   | 'INDEXING'
   | 'COLLECTING_EVIDENCE'
+  | 'AWAITING_SYNTHESIS'
+  | 'SYNTHESIZING'
   | 'BUILDING_FACT_BASE'
   | 'VALIDATING'
   | 'COMPLETED'
@@ -42,6 +44,8 @@ export interface SystemScanRunState {
   indexedProjectCount: number
   evidenceProjectCount: number
   scopeViolationCount: number
+  synthesisInputDigest?: string
+  synthesisAttempts?: number
   transitions: RunTransition[]
   error?: string
 }
@@ -134,6 +138,47 @@ export interface SystemEvidenceBundle {
   records: ProjectSystemEvidence[]
 }
 
+export interface SystemSynthesisDraft {
+  factBase: string
+  diagrams: {
+    systemContext: string
+    internalRelations: string
+    entryOverview: string
+  }
+}
+
+export interface SystemSynthesisContext {
+  runId: string
+  protocolDigest: string
+  prompt: string
+}
+
+export interface SystemProjectEvidenceContext {
+  runId: string
+  protocolDigest: string
+  projectKeys: string[]
+  missingProjectKeys: string[]
+  evidenceJson: string
+}
+
+export interface SystemSynthesisWriter {
+  kind: 'dsh-main-agent'
+  sessionId: string
+  provider?: string
+  model?: string
+}
+
+export interface SystemSynthesisRecord {
+  protocolVersion: typeof SYSTEM_SCAN_PROTOCOL
+  runId: string
+  generatedAt: string
+  writer: SystemSynthesisWriter
+  attempt: number
+  protocolDigest: string
+  inputDigest: string
+  outputDigest: string
+}
+
 export interface SystemScanProgress {
   stage: SystemScanStatus
   message: string
@@ -167,6 +212,12 @@ export interface SystemScanResult {
   scopeViolationCount: number
   outputDirectory: string
   reused: boolean
+}
+
+export interface SystemSynthesisCommitResult extends SystemScanResult {
+  synthesisAttempt: number
+  retryAllowed: boolean
+  issues: ValidationIssue[]
 }
 
 export interface ArchScopeStatusResult {

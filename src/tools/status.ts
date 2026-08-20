@@ -8,6 +8,16 @@ export function createStatusMessage(status: ArchScopeStatusResult): string {
     return `No ArchScope run was found. Analysis artifacts will be written to ${status.outputDirectory}.`
   }
 
+  if (status.status === 'AWAITING_SYNTHESIS' || status.status === 'SYNTHESIZING') {
+    return [
+      `ArchScope evidence collection finished · ${status.projectCount} projects · current main-agent worldview synthesis ${status.status === 'SYNTHESIZING' ? 'in progress' : 'pending'}.`,
+      `Fresh indexes ${status.indexedProjectCount}/${status.projectCount} · collected evidence ${status.evidenceProjectCount}/${status.projectCount} · scope violations ${status.scopeViolationCount}.`,
+      `System artifact validation has not finished (${status.validation}) · project-scan gate ${status.gate}.`,
+      `Evidence: ${status.outputDirectory}/system/evidence/index.json`,
+      `Run: ${status.runId} · machine status ${status.status}.`,
+    ].join('\n')
+  }
+
   const scanOutcome = status.status === 'FAILED'
     ? 'failed'
     : status.status === 'COMPLETED' || status.status === 'BLOCKED'

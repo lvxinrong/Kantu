@@ -1,9 +1,65 @@
-# System-level analysis
+# ArchScope 系统级分析政策
 
-The system scan creates one shared fact base before any project is profiled. It recursively discovers real Git roots, assigns stable workspace-relative identities, records every code-intelligence state, and then synthesizes only coarse system facts.
+系统级分析为多工程工作区建立共享世界观。它回答“这个系统由什么组成、从哪里进入、工程之间如何粗粒度关联、依赖什么基础设施和数据资产、哪些结论可信、哪些仍待确认”，而不回答单个工程内部如何实现。
 
-The system fact base covers the workspace nature, index coverage, project inventory, production boundary, system entries, infrastructure, entry overview, capability map, internal relationships, external dependencies, data ownership, historical branches, terminology, trustworthy conclusions, conflicts, graded questions, diagrams, quality, evidence coverage, self-checks, and next tasks.
+## 角色分工
 
-System analysis must not become a project deep dive. It does not trace internal call chains, enumerate routes or implementation symbols, narrate business workflows, identify code hotspots, assess technical debt, or propose refactoring. Raw entries, infrastructure details, capabilities, data assets, and conflicts stay in per-project evidence JSON. The main document groups them into entry surfaces, cross-project capability and infrastructure themes, relationship summaries, data categories, and conflict classes. Missing runtime evidence caps production claims at `待确认`.
+系统级采用“多 worker 取证、主 Agent 单写”的模型：
 
-Evidence collection may be parallel, but the system worldview has one writer. Every real Git project must first have an independent, ready code-intelligence index. Per-project workers are read-only, receive exactly one index scope, and return bounded structured evidence with paths; the writer owns cross-project connections, terminology, conflict arbitration, and the final report. A failed index or worker remains visible in machine artifacts and blocks the downstream gate.
+- 发现器确定真实 Git 根与稳定工程身份。
+- 代码智能层为每个工程建立独立索引并记录可用性。
+- evidence worker 只在一个工程范围内采集结构化原始证据。
+- 当前 DSH 主 Agent读取全部工程 evidence，进行跨工程语义综合。
+- 插件运行时只负责持久化、协议字段规范化、确定性校验和层级门禁。
+
+主 Agent 是最终系统级结论的唯一作者。任何正则分类、名称匹配、工程类型识别或统计结果都只能是候选输入，不能绕过大模型综合直接成为最终世界观。
+
+## 分析对象
+
+### 当前目录性质
+
+判断扫描根是单工程、单仓多模块、多仓聚合、历史工程混放或无法确认。工程注册表只代表当前发现范围，不自动等于生产系统边界。
+
+### 工程与名称体系
+
+以工作区相对路径作为稳定身份，统一目录名、仓库名、构建产物名、服务名、注册中心名、客户端名称、中文名和历史别名。证据不足时保留多个候选，不强行合并。
+
+### 系统入口
+
+入口可以包括 PC/Web、H5、移动端、小程序、后台管理、公开 API、数据任务和部署运维入口。源码只能确认入口形态候选；是否为生产入口需要运行态、部署发布或人工确认。
+
+### 入口链路
+
+入口链路只做到系统级粗粒度：用户/外部系统 → 入口承载工程 → 服务/API/网关候选 → 关键内部或外部依赖 → 数据资产候选。不得展开路由、方法、类或业务步骤。
+
+### 系统能力地图
+
+能力域从页面/路由类别、工程职责、包或目录、Topic、数据资产、服务名和文档候选中归纳。能力地图是技术视角的系统归类，不是业务流程，也不能仅根据仓库名生成。
+
+### 内部关系与外部依赖
+
+只有双方都在工程注册表内且 evidence 支持关联时，才能列为系统内部跨项目关系。调用对象不在工程清单、只能识别为 SDK/平台/SaaS/外部数据源，或名称无法稳定映射时，应归入外部依赖或归属待确认。源码调用关系与生产运行关系必须分开表达。
+
+### 数据资产
+
+数据资产包括 DB/Schema/表、集合、Topic、缓存、对象存储、文件交换、搜索索引和分析数据集。SQL/DDL/迁移脚本是强结构证据，但不是硬前置；ORM、Mapper、Repository、配置、代码图谱、运行态和人工确认可以作为替代证据。写入、读取和拥有是三个不同概念。
+
+### 历史与旁支工程
+
+不得仅凭 old、legacy、backup、test 等名称判断工程已废弃。废弃、历史、旁支和生产状态需要人工确认、部署发布或其他可靠材料。
+
+## 证据仲裁
+
+同一结论出现多个来源时，按运行态、人工确认、部署发布、代码图谱、源码、历史文档排序。高优先级来源可以提高可信度，但不能删除冲突记录。来源日期、环境或范围不同导致的差异必须保留为冲突待复核。
+
+每条系统级结论至少包含：结论、证据来源类型、证据位置、可信边界。模型推理可以连接证据，但不能成为唯一证据来源。
+
+## 输出粒度
+
+主文档应当让第一次接手该系统的人快速形成整体地图。工程级原始条目、具体路由、符号、配置片段和实现问题全部下沉到 evidence JSON。系统级表格行数必须服从文档契约，优先聚合主题而不是罗列详情。
+
+## 质量与门禁
+
+质量评分用于暴露当前事实底座的可信程度，不是审计评分。运行态材料缺失时，生产边界可信度不能获得高分。证据覆盖率必须显式显示盲区。
+
+系统级事实底座完成后不自动进入项目级。只有系统文档契约校验通过、所有工程均有明确索引/evidence 状态、无范围违规且系统到项目门禁 READY 时，用户才能主动启动项目级扫描。

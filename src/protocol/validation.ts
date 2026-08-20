@@ -65,13 +65,47 @@ function markdownTableDataRows(section: string): number {
   return Math.max(0, rows.length - 1)
 }
 
+function markdownTableCells(line: string): string[] {
+  return line.trim().replace(/^\||\|$/gu, '').split(/(?<!\\)\|/u).map(cell => cell.trim().replace(/\\\|/gu, '|'))
+}
+
+export function activeProjectBlockers(content: string): string[] {
+  const section = markdownSection(content, '## 16. 关键待确认问题分级')
+  return section.split(/\r?\n/gu)
+    .filter(line => /^\|/u.test(line.trim()))
+    .map(markdownTableCells)
+    .filter(cells => cells[1] === '阻断项目级')
+    .map(cells => cells[0] ?? '')
+    .filter(problem => !/^(?:当前)?(?:无|未发现|没有|不适用)/u.test(problem))
+}
+
+export function validateSensitiveContent(
+  content: string,
+  pack: LoadedProtocolPack,
+  location = 'system report',
+): ValidationIssue[] {
+  const evidence = parseProtocolContract<EvidenceContract>(pack, EVIDENCE_CONTRACT)
+  const skipMarkers = evidence.redaction.skipMarkers.map(marker => marker.toLowerCase())
+  const patterns = evidence.redaction.patterns.map(item => ({ id: item.id, regex: new RegExp(item.source, item.flags) }))
+  const issues: ValidationIssue[] = []
+  for (const [index, line] of content.split(/\r?\n/gu).entries()) {
+    if (skipMarkers.some(marker => line.toLowerCase().includes(marker))) continue
+    for (const pattern of patterns) {
+      pattern.regex.lastIndex = 0
+      if (!pattern.regex.test(line)) continue
+      issues.push({ severity: 'ERROR', code: 'SENSITIVE_VALUE_DETECTED', message: `${pattern.id} detected at ${location} line ${index + 1}.` })
+      break
+    }
+  }
+  return issues
+}
+
 export function validateSystemDocument(
   content: string,
   artifactPaths: Iterable<string>,
   pack: LoadedProtocolPack,
 ): ValidationIssue[] {
   const contract = parseProtocolContract<SystemDocumentContract>(pack, SYSTEM_DOCUMENT_CONTRACT)
-  const evidence = parseProtocolContract<EvidenceContract>(pack, EVIDENCE_CONTRACT)
   const layerState = parseProtocolContract<LayerStateContract>(pack, LAYER_STATE_CONTRACT)
   const issues: ValidationIssue[] = []
   const actualHeadings = markdownHeadings(content)
@@ -94,6 +128,12 @@ export function validateSystemDocument(
         issues.push({ severity: 'ERROR', code: 'SYSTEM_GATE_INCONSISTENT', message: `System-to-project gate rejects ${field}=${metadata[field] ?? 'MISSING'}.` })
       }
     }
+  }
+  const blockers = activeProjectBlockers(content)
+  if (blockers.length > 0) {
+    issues.push(metadata['下层门禁'] === 'READY'
+      ? { severity: 'ERROR', code: 'SYSTEM_GATE_INCONSISTENT', message: `Project gate is READY while ${blockers.length} active project-level blocker(s) are declared.` }
+      : { severity: 'WARNING', code: 'PROJECT_GATE_BLOCKED_BY_DOCUMENT', message: `${blockers.length} active project-level blocker(s) keep the downstream gate BLOCKED.` })
   }
 
   const presentArtifacts = new Set(artifactPaths)
@@ -166,15 +206,6 @@ export function validateSystemDocument(
     }
   }
 
-  const skipMarkers = evidence.redaction.skipMarkers.map(marker => marker.toLowerCase())
-  const patterns = evidence.redaction.patterns.map(item => ({ id: item.id, regex: new RegExp(item.source, item.flags) }))
-  for (const [index, line] of content.split(/\r?\n/gu).entries()) {
-    if (skipMarkers.some(marker => line.toLowerCase().includes(marker))) continue
-    for (const pattern of patterns) {
-      if (pattern.regex.test(line)) {
-        issues.push({ severity: 'ERROR', code: 'SENSITIVE_VALUE_DETECTED', message: `${pattern.id} detected at system report line ${index + 1}.` })
-      }
-    }
-  }
+  issues.push(...validateSensitiveContent(content, pack))
   return issues
 }

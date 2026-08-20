@@ -120,7 +120,7 @@ function createSystemScanCompletedMessage(result: SystemScanResult) {
   return createUserMessage({
     content: [{
       type: 'text',
-      text: `ArchScope's deterministic system-level scan has finished. Report these exact user-facing facts in concise Chinese and do not call any tools:
+      text: `ArchScope's model-backed system-level scan has finished after main-agent synthesis and deterministic validation. Report these exact user-facing facts in concise Chinese and do not call any tools:
 - scan execution: ${result.reused ? 'reused from a compatible completed run' : 'completed now'}
 - discovered projects: ${result.projectCount}
 - fresh indexes: ${result.indexedProjectCount}/${result.projectCount}
@@ -147,12 +147,27 @@ Do not describe the aggregate validation field as structure-only validation. Cle
   })
 }
 
+function createSystemSynthesisRequestedMessage(result: SystemScanResult) {
+  return createUserMessage({
+    content: [{
+      type: 'text',
+      text: `你是本次 ArchScope 系统扫描的主 Agent。${result.projectCount} 个工程的隔离取证已经结束，现在必须由你汇总并建立系统世界观。立即调用 archscope_get_system_synthesis_context，runId=${result.runId}；完整遵循工具返回的主写者协议，生成系统级事实底座和三张 Mermaid 图，并调用 archscope_commit_system_synthesis 提交。不要重新扫描代码，不要跳过提交，不要在提交前向用户宣称系统分析已完成。`,
+    }],
+    source: {
+      kind: 'plugin',
+      plugin: 'archscope',
+      form: 'notice',
+      summary: `ArchScope 主 Agent 综合 · ${result.evidenceProjectCount}/${result.projectCount} 个工程证据已就绪`,
+    },
+  })
+}
+
 function createSystemScanFailedMessage(error: unknown) {
   const reason = error instanceof Error ? error.message : String(error)
   return createUserMessage({
     content: [{
       type: 'text',
-      text: `ArchScope's deterministic system scan failed. Tell the user concisely in Chinese that the scan failed with this reason and do not call any tools: ${reason}`,
+      text: `ArchScope's system scan failed. Tell the user concisely in Chinese that the scan failed with this reason and do not call any tools: ${reason}`,
     }],
     source: {
       kind: 'plugin',
@@ -227,7 +242,11 @@ export function createArchScopeCommand(runtime: ArchScopeCommandRuntime): Comman
               agent.followup(createSystemScanProgressMessage(progress))
             },
           })
-          agent.followup(createSystemScanCompletedMessage(result))
+          if (result.status === 'AWAITING_SYNTHESIS' || result.status === 'SYNTHESIZING') {
+            agent.followup(createSystemSynthesisRequestedMessage(result))
+          } else {
+            agent.followup(createSystemScanCompletedMessage(result))
+          }
           return { kind: 'success', text: createSystemScanMessage(result) }
         } catch (error: unknown) {
           agent.followup(createSystemScanFailedMessage(error))

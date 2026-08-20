@@ -7,6 +7,9 @@ Before a system report can be used by a downstream layer, ArchScope validates:
 - a one-to-one project registry and index manifest;
 - all required JSON, report, diagram, validation, and protocol-lock artifacts;
 - sensitive-value redaction;
+- complete internal-domain and raw data-asset identifier redaction;
+- agreement between active `阻断项目级` questions and the downstream gate;
+- explicit Mermaid edge semantics distinguishing source evidence from pending inference and production runtime;
 - the distinction between source evidence and runtime confirmation;
 - the presence of quality dimensions, evidence coverage objects, graded questions, and evidence arbitration;
 - the absence of project-level deep-dive headings.

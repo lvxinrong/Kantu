@@ -10,9 +10,9 @@ ArchScope helps AI agents genuinely take over an unfamiliar software system—no
 
 It brings source discovery, evidence collection, system modeling, project profiling, layer gates, parallel orchestration, deterministic validation, and an architecture portal into one recoverable, verifiable, and extensible scanning protocol, delivered as a native DeepSeek Harness plugin.
 
-**Project status: v0.1.0 establishes the first runnable source-level system scan preview; the npm package is not yet published.** ArchScope can discover Git projects, build or reuse an independent codebase-memory index for each project, run isolated read-only evidence workers, synthesize a 22-section system fact base through one deterministic writer, and enforce gates over both machine-readable and Markdown artifacts. Runtime evidence, project scans, and resume orchestration are still under development.
+**Project status: v0.1.0 establishes the first runnable source-level system scan preview; the npm package is not yet published.** ArchScope can discover Git projects, build or reuse an independent codebase-memory index for each project, run isolated read-only evidence workers, hand their evidence to the current DSH main agent for a 22-section system synthesis, and enforce gates over both machine-readable and Markdown artifacts. Runtime evidence, project scans, and resume orchestration are still under development.
 
-> **Core model: system-level analysis establishes the shared worldview; project-level analysis defines each engineering profile; module-level analysis defines responsibility boundaries; code-level analysis traces execution paths.**
+> **Core model: system level defines the worldview, project level defines the engineering profile, module level defines internal boundaries, and code level defines concrete paths.**
 
 Module analysis maps capabilities and responsibilities horizontally; code analysis follows real execution paths vertically.
 
@@ -105,7 +105,7 @@ A complete scan is not one giant prompt. It is a sequence of inspectable stages:
 
 ## Current MVP experience
 
-ArchScope is designed to accept natural-language intent through Harness tools. The current model-facing tools are `archscope_scan_system` and `archscope_status`; deeper analysis tools will be added behind the same service boundary.
+ArchScope is designed to accept natural-language intent through Harness tools. The user-facing tools are `archscope_scan_system` and `archscope_status`; internal context and commit tools support the main-agent synthesis handoff, and deeper analysis tools will be added behind the same service boundary.
 
 ```text
 Build a system-level fact base for this workspace.
@@ -127,7 +127,7 @@ For deterministic, scriptable control, the same intents use one strict command n
 /archscope help
 ```
 
-Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. `system` performs discovery, independent indexing, per-project evidence collection, fact-base synthesis, and deterministic validation. It reports stages and quarter-progress milestones in the main conversation. A first scan—or a run with `--refresh`—can take substantial time; a normal run reuses indexes matched by the project's exact absolute root. Completed runs with the same protocol can be reused, while `BLOCKED` runs are retried instead of permanently caching failure.
+Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. `system` performs discovery, independent indexing, and per-project evidence collection, then hands the run to the current DSH main agent. The main agent loads the complete system protocol and structured evidence, synthesizes the fact base and three diagrams, and submits them for deterministic validation. Progress and quarter milestones remain visible in the main conversation. A first scan—or a run with `--refresh`—can take substantial time; a normal run reuses indexes matched by the project's exact absolute root. Completed runs, and compatible runs awaiting main-agent synthesis, can be reused; `BLOCKED` runs are retried.
 
 The project gate can become `READY` once source-level indexes and evidence are complete. This does not claim that the production topology has been confirmed. Missing MCP tools, failed indexes, failed workers, or scope violations keep the gate `BLOCKED`. `system`, `status`, and `help` are runnable; `project` and `resume` remain reserved and fail closed until their workflows exist.
 
@@ -161,6 +161,7 @@ archscope_docs/
 │   │   ├── index.json
 │   │   └── <project-key>.json
 │   ├── protocol-lock.json
+│   ├── synthesis.json
 │   ├── validation.json
 │   └── diagrams/
 │       ├── 01-system-context.mmd
@@ -169,16 +170,23 @@ archscope_docs/
 ├── runs/
 │   ├── latest.json
 │   └── <run-id>/
-│       └── state.json
+│       ├── state.json
+│       └── synthesis/
+│           └── attempt-<n>/
+│               ├── attempt.json
+│               ├── 00-system-fact-base.md
+│               └── diagrams/
 ```
 
-Each project's raw structured evidence is written separately before the single system writer synthesizes the fact base. Parallel workers never compete to write the document or consume one another's output. The main document groups evidence into user-facing entry surfaces, cross-project capability and infrastructure themes, relationship summaries, data categories, and conflict classes; route, symbol, configuration, and implementation details remain in the per-project evidence JSON. Deterministic semantic-boundary checks cap section size and reject leaked route or implementation detail. With complete source evidence, the document may be marked complete for the source view and the project gate may open; runtime facts remain explicitly unconfirmed, and aggregate validation is never treated as proof of production architecture.
+Each project's raw structured evidence is written separately before the current DSH main agent synthesizes the fact base. Parallel workers never compete to write the document or consume one another's output. When a large evidence bundle is bounded, the writer can selectively retrieve complete persisted evidence for one to eight high-impact project keys without receiving filesystem or code-search access. The main agent owns cross-project understanding, terminology, relationship judgment, conflict arbitration, and final prose; deterministic regex and name matching remain candidates rather than final conclusions.
+
+ArchScope records the writer session, model, and input/output digests in `system/synthesis.json`, and preserves every submitted draft plus its validation report under the run's `synthesis/attempt-<n>/` directory. It validates Markdown and Mermaid artifacts for structure, evidence boundaries, complete internal domains, raw data-asset identifiers, explicit diagram edge semantics, and agreement between active project blockers and the downstream gate. Route, symbol, configuration, and implementation details remain in per-project evidence JSON. With complete source evidence and no active project-level blocker, the document may be marked complete for the source view and the project gate may open; runtime facts remain explicitly unconfirmed.
 
 Code definitions, routes, and call relationships remain codebase-memory-first. For manifests, READMEs, CI, containers, and deployment configuration that graphs often miss, ArchScope collects a bounded metadata baseline in the parent process with project-root containment, symlink rejection, file and aggregate size limits, and sensitive-value redaction before model injection. Evidence workers do not receive arbitrary filesystem reads, shell access, or write capabilities.
 
 ### System Protocol Pack
 
-ArchScope ships system-level analysis knowledge as a versioned `protocol/` directory rather than hiding it inside one prompt. The pack contains machine contracts for evidence, project identity, index state, the 22-section system document, and layer gates; Markdown policies for analysis boundaries, redaction, output paths, and validation; and focused prompts for the system writer and read-only evidence tasks.
+ArchScope ships system-level analysis knowledge as a versioned `protocol/` directory. The pack contains machine contracts for evidence, project identity, index state, the 22-section system document, and layer gates; Markdown policies for analysis boundaries, redaction, output paths, and validation; a complete system-writer instruction that is actually injected into the current DSH main agent; and a focused prompt for read-only evidence workers.
 
 The plugin loads and validates this catalog at runtime. Every scan writes `system/protocol-lock.json` with the pack version plus SHA-256 digests for the manifest and every resource. A changed pack therefore creates a new run instead of silently reusing results produced under different rules. Script-worthy invariants are implemented in TypeScript and tested; the Markdown remains inspectable protocol content, not an unenforced appendix.
 
