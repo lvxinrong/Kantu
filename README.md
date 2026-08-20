@@ -1,20 +1,22 @@
-# Kantu
+# ArchScope
 
 **English** | [简体中文](./README.zh-CN.md)
 
 > Evidence-driven architecture reconnaissance for complex, multi-repository software systems—built for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-Kantu helps AI agents genuinely take over an unfamiliar software system—not merely browse directories, count files, or produce an architecture summary that sounds complete.
+**See the system before changing the code.**
+
+ArchScope helps AI agents genuinely take over an unfamiliar software system—not merely browse directories, count files, or produce an architecture summary that sounds complete.
 
 It brings source discovery, evidence collection, system modeling, project profiling, layer gates, parallel orchestration, deterministic validation, and an architecture portal into one recoverable, verifiable, and extensible scanning protocol, delivered as a native DeepSeek Harness plugin.
 
-**Project status: the source-level system scan is runnable end to end, but not yet published.** Kantu can discover Git projects, build or reuse an independent codebase-memory index for each project, run isolated read-only evidence workers, synthesize a 22-section system fact base through one deterministic writer, and enforce gates over both machine-readable and Markdown artifacts. Runtime evidence, project scans, and resume orchestration are still under development.
+**Project status: the source-level system scan is runnable end to end, but not yet published.** ArchScope can discover Git projects, build or reuse an independent codebase-memory index for each project, run isolated read-only evidence workers, synthesize a 22-section system fact base through one deterministic writer, and enforce gates over both machine-readable and Markdown artifacts. Runtime evidence, project scans, and resume orchestration are still under development.
 
 > **Core model: system-level analysis establishes the shared worldview; project-level analysis defines each engineering profile; module-level analysis defines responsibility boundaries; code-level analysis traces execution paths.**
 
 Module analysis maps capabilities and responsibilities horizontally; code analysis follows real execution paths vertically.
 
-## Why Kantu
+## Why ArchScope
 
 When an agent enters a large codebase for the first time, the easiest result to produce is one that is locally correct but globally wrong:
 
@@ -25,11 +27,11 @@ When an agent enters a large codebase for the first time, the easiest result to 
 - dispatching parallel agents without a shared fact base or conflict resolution;
 - losing a session and no longer knowing what was completed or which results remain trustworthy.
 
-Kantu starts from a different premise:
+ArchScope starts from a different premise:
 
 > Architecture understanding is not a one-shot code summary. It is an engineering process—from evidence to conclusions and from local detail to system context—that must be verifiable and recoverable.
 
-## What makes Kantu different
+## What makes ArchScope different
 
 ### Evidence before conclusions
 
@@ -37,7 +39,7 @@ Every important conclusion should point to reviewable evidence. Anything that ca
 
 ### Establish the system worldview before profiling projects
 
-Kantu does not let multiple agents independently interpret a system without shared context. A system-level fact base first aligns production boundaries, project identities, infrastructure, entry points, and terminology. Project-level analysis then inherits those facts.
+ArchScope does not let multiple agents independently interpret a system without shared context. A system-level fact base first aligns production boundaries, project identities, infrastructure, entry points, and terminology. Project-level analysis then inherits those facts.
 
 ### Let models reason; let programs enforce discipline
 
@@ -49,11 +51,11 @@ Project identity is based on the workspace-relative path, not the directory base
 
 ### Native to the plugin runtime
 
-Kantu is not a long prompt wrapped in an npm package. It is designed around Cordis services, model-facing tools, capability providers, and a Harness bundle so that scanning capabilities can be composed, replaced, hot-reloaded, and reused.
+ArchScope is not a long prompt wrapped in an npm package. It is designed around Cordis services, model-facing tools, capability providers, and a Harness bundle so that scanning capabilities can be composed, replaced, hot-reloaded, and reused.
 
 ## Analysis model
 
-Kantu uses layers to control analysis order and the boundaries of each conclusion:
+ArchScope uses layers to control analysis order and the boundaries of each conclusion:
 
 | Layer | Question | Primary artifact |
 |---|---|---|
@@ -103,7 +105,7 @@ A complete scan is not one giant prompt. It is a sequence of inspectable stages:
 
 ## Current MVP experience
 
-Kantu is designed to accept natural-language intent through Harness tools. The current model-facing tools are `kantu_scan_system` and `kantu_status`; deeper analysis tools will be added behind the same service boundary.
+ArchScope is designed to accept natural-language intent through Harness tools. The current model-facing tools are `archscope_scan_system` and `archscope_status`; deeper analysis tools will be added behind the same service boundary.
 
 ```text
 Build a system-level fact base for this workspace.
@@ -118,14 +120,16 @@ Trace the order endpoint from its controller to database writes and message publ
 For deterministic, scriptable control, the same intents use one strict command namespace:
 
 ```text
-/kantu system [--refresh]
-/kantu project <project-key> [--refresh]
-/kantu status [run-id]
-/kantu resume [run-id]
-/kantu help
+/archscope system [--refresh]
+/archscope project <project-key> [--refresh]
+/archscope status [run-id]
+/archscope resume [run-id]
+/archscope help
 ```
 
 Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. `system` performs discovery, independent indexing, per-project evidence collection, fact-base synthesis, and deterministic validation. It reports stages and quarter-progress milestones in the main conversation. A first scan—or a run with `--refresh`—can take substantial time; a normal run reuses indexes matched by the project's exact absolute root. Completed runs with the same protocol can be reused, while `BLOCKED` runs are retried instead of permanently caching failure.
+
+During the rename transition, `/kantu` remains a deprecated alias for `/archscope`. The legacy model tools `kantu_scan_system` and `kantu_status` are also registered by default and can be disabled with `registerLegacyAliases: false`. New integrations should use only the ArchScope names.
 
 The project gate can become `READY` once source-level indexes and evidence are complete. This does not claim that the production topology has been confirmed. Missing MCP tools, failed indexes, failed workers, or scope violations keep the gate `BLOCKED`. `system`, `status`, and `help` are runnable; `project` and `resume` remain reserved and fail closed until their workflows exist.
 
@@ -147,7 +151,7 @@ Users should interact with a small set of clear analysis intents, not a long lis
 
 ## Current system-scan artifacts
 
-By default, Kantu writes analysis artifacts to an isolated output directory and does not modify business code:
+By default, ArchScope writes analysis artifacts to an isolated output directory and does not modify business code:
 
 ```text
 kantu_docs/
@@ -170,13 +174,13 @@ kantu_docs/
 │       └── state.json
 ```
 
-Each project's raw structured evidence is written separately before the single system writer synthesizes the fact base. Parallel workers never compete to write the document or consume one another's output. The main document keeps only representative facts needed to establish the system worldview; complete entries, dependencies, data assets, and conflicts remain in the per-project evidence JSON. With complete source evidence, the document may be marked complete for the source view and the project gate may open; runtime facts remain explicitly unconfirmed, and aggregate validation is never treated as proof of production architecture.
+Each project's raw structured evidence is written separately before the single system writer synthesizes the fact base. Parallel workers never compete to write the document or consume one another's output. The main document groups evidence into user-facing entry surfaces, cross-project capability and infrastructure themes, relationship summaries, data categories, and conflict classes; route, symbol, configuration, and implementation details remain in the per-project evidence JSON. Deterministic semantic-boundary checks cap section size and reject leaked route or implementation detail. With complete source evidence, the document may be marked complete for the source view and the project gate may open; runtime facts remain explicitly unconfirmed, and aggregate validation is never treated as proof of production architecture.
 
-Code definitions, routes, and call relationships remain codebase-memory-first. For manifests, READMEs, CI, containers, and deployment configuration that graphs often miss, Kantu collects a bounded metadata baseline in the parent process with project-root containment, symlink rejection, file and aggregate size limits, and sensitive-value redaction before model injection. Evidence workers do not receive arbitrary filesystem reads, shell access, or write capabilities.
+Code definitions, routes, and call relationships remain codebase-memory-first. For manifests, READMEs, CI, containers, and deployment configuration that graphs often miss, ArchScope collects a bounded metadata baseline in the parent process with project-root containment, symlink rejection, file and aggregate size limits, and sensitive-value redaction before model injection. Evidence workers do not receive arbitrary filesystem reads, shell access, or write capabilities.
 
 ### System Protocol Pack
 
-Kantu ships system-level analysis knowledge as a versioned `protocol/` directory rather than hiding it inside one prompt. The pack contains machine contracts for evidence, project identity, index state, the 22-section system document, and layer gates; Markdown policies for analysis boundaries, redaction, output paths, and validation; and focused prompts for the system writer and read-only evidence tasks.
+ArchScope ships system-level analysis knowledge as a versioned `protocol/` directory rather than hiding it inside one prompt. The pack contains machine contracts for evidence, project identity, index state, the 22-section system document, and layer gates; Markdown policies for analysis boundaries, redaction, output paths, and validation; and focused prompts for the system writer and read-only evidence tasks.
 
 The plugin loads and validates this catalog at runtime. Every scan writes `system/protocol-lock.json` with the pack version plus SHA-256 digests for the manifest and every resource. A changed pack therefore creates a new run instead of silently reusing results produced under different rules. Script-worthy invariants are implemented in TypeScript and tested; the Markdown remains inspectable protocol content, not an unenforced appendix.
 
@@ -191,11 +195,16 @@ The plugin loads and validates this catalog at runtime. Every scan writes `syste
 | `indexMode` | `moderate` | `fast`, `moderate`, or `full` mode for new or refreshed indexes |
 | `evidenceProvider` | `spawn` | DSH subagent provider for isolated read-only evidence workers |
 | `systemConcurrency` | `4` | Maximum concurrent index and evidence tasks |
-| `registerCommand` | `true` | Register the optional `/kantu` command |
-| `registerSystemScanTool` | `true` | Register `kantu_scan_system` |
-| `registerStatusTool` | `true` | Register `kantu_status` |
+| `registerCommand` | `true` | Register the optional `/archscope` command |
+| `registerSystemScanTool` | `true` | Register `archscope_scan_system` |
+| `registerStatusTool` | `true` | Register `archscope_status` |
+| `registerLegacyAliases` | `true` | Temporarily register deprecated `/kantu` and `kantu_*` aliases |
 
-The Kantu bundle also mounts the official DeepSeek Harness `@deepseek-ai/dsh-mcp-client` and starts `codebase-memory-mcp` over stdio. Before starting DSH, make sure that executable is available on `PATH`:
+The default `kantu_docs/` artifact directory and the `kantu/.../v1` protocol identifiers are intentionally retained as compatibility identifiers for existing scan history. They are not the public product name. A future protocol-major migration can introduce new identifiers with an explicit data migration path.
+
+Canonical naming and compatibility boundaries are recorded in [`docs/brand.md`](./docs/brand.md).
+
+The ArchScope bundle also mounts the official DeepSeek Harness `@deepseek-ai/dsh-mcp-client` and starts `codebase-memory-mcp` over stdio. Before starting DSH, make sure that executable is available on `PATH`:
 
 ```bash
 command -v codebase-memory-mcp
@@ -204,18 +213,18 @@ command -v codebase-memory-mcp
 After installing the plugin, verify that both configuration layers are present:
 
 ```bash
-dsh --profile web --dump-config | rg -n -C 6 "kantu-codebase-memory|codebase_memory_mcp|dsh-kantu"
+dsh --profile web --dump-config | rg -n -C 6 "archscope-codebase-memory|codebase_memory_mcp|dsh-archscope"
 ```
 
-For local development, run `pnpm install` followed by `pnpm check`. Kantu is not yet published to npm, so the public install command will be documented with the first release.
+For local development, run `pnpm install` followed by `pnpm check`. ArchScope is not yet published to npm, so the public install command will be documented with the first release.
 
 ## Plugin architecture direction
 
-Kantu is designed around the following internal boundaries:
+ArchScope is designed around the following internal boundaries:
 
 ```text
-Kantu Bundle
-├── Kantu Service
+ArchScope Bundle
+├── ArchScope Service
 │   ├── Scan state machine
 │   ├── Tasks and recovery
 │   ├── Artifact management
@@ -233,11 +242,11 @@ Kantu Bundle
 └── Report and Portal Generator
 ```
 
-A code graph will be the preferred discovery mechanism, but never the only one. Kantu will use capability interfaces to support codebase-memory, LSP, file search, and future providers.
+A code graph will be the preferred discovery mechanism, but never the only one. ArchScope will use capability interfaces to support codebase-memory, LSP, file search, and future providers.
 
 ## Discovery and distribution
 
-Kantu will follow the official DeepSeek Harness plugin discovery convention. At public release, this repository will carry the exact [`dsh-plugin`](https://github.com/topics/dsh-plugin) GitHub topic so it can appear in the Harness plugin discovery ecosystem.
+ArchScope will follow the official DeepSeek Harness plugin discovery convention. At public release, this repository will carry the exact [`dsh-plugin`](https://github.com/topics/dsh-plugin) GitHub topic so it can appear in the Harness plugin discovery ecosystem.
 
 Discoverability alone is not enough. Every release must also:
 
@@ -248,7 +257,7 @@ Discoverability alone is not enough. Every release must also:
 - document a copyable install command, compatible Harness versions, and a minimal verification path;
 - manage compatibility changes with semantic versions, GitHub Releases, and explicit migration notes.
 
-Being indexed by the topic does not imply endorsement by DeepSeek. Kantu treats “discoverable, installable, and verifiable” as one release gate—not as a label alone.
+Being indexed by the topic does not imply endorsement by DeepSeek. ArchScope treats “discoverable, installable, and verifiable” as one release gate—not as a label alone.
 
 ## Design principles
 
@@ -259,10 +268,10 @@ Being indexed by the topic does not imply endorsement by DeepSeek. Kantu treats 
 - **Deterministic gates:** Rules that programs can decide should not depend on a model remembering to comply.
 - **Context isolation:** Project and module tasks receive only the context required to complete their responsibility.
 - **Recoverable execution:** Long-running, multi-project scans expose status, preserve failures, and resume after interruption.
-- **Safe defaults:** Kantu does not modify business code or expose secrets, tokens, passwords, private keys, or complete sensitive endpoints by default.
+- **Safe defaults:** ArchScope does not modify business code or expose secrets, tokens, passwords, private keys, or complete sensitive endpoints by default.
 - **Replaceable models and tools:** The core protocol does not depend on one model, index engine, or code-search tool.
 
-## What Kantu is not
+## What ArchScope is not
 
 - It is not a counter for lines, directories, and dependencies.
 - It is not a giant prompt that pours every repository into one context.
@@ -270,14 +279,14 @@ Being indexed by the topic does not imply endorsement by DeepSeek. Kantu treats 
 - It is not an automatic source of truth that replaces architects, developers, or operations confirmation.
 - It is not a coding agent that modifies or “helpfully refactors” the scanned business code by default.
 
-Kantu aims to provide a more trustworthy starting point and a path for analysis that can be deepened and reviewed over time.
+ArchScope aims to provide a more trustworthy starting point and a path for analysis that can be deepened and reviewed over time.
 
 ## Roadmap
 
 ### Phase 1: Minimum trustworthy loop
 
 - [x] Establish the TypeScript plugin project and Harness bundle
-- [x] Define the Kantu Service, configuration schema, and foundational tools
+- [x] Define the ArchScope Service, configuration schema, and foundational tools
 - [x] Implement multi-repository discovery and stable project identities
 - [x] Package the system-level contracts, policies, prompts, and protocol lock
 - [x] Complete independent indexing, read-only evidence collection, system fact-base generation, and deterministic validation
@@ -306,13 +315,13 @@ Kantu aims to provide a more trustworthy starting point and a path for analysis 
 - [ ] Custom evidence sources and organization policy packs
 - [ ] Headless, Web, and automation workflow integration
 - [ ] Publish a prebuilt npm bundle and verify standard installation and removal
-- [ ] Add the `dsh-plugin` GitHub topic and verify that Kantu appears in the ecosystem discovery entry point
+- [ ] Add the `dsh-plugin` GitHub topic and verify that ArchScope appears in the ecosystem discovery entry point
 
 The roadmap will evolve alongside the Developer Preview APIs of DeepSeek Harness.
 
 ## Contributing
 
-At this stage, Kantu needs careful discussion of problem boundaries and protocol design more than a large volume of feature code. Useful questions include:
+At this stage, ArchScope needs careful discussion of problem boundaries and protocol design more than a large volume of feature code. Useful questions include:
 
 - Which facts are hardest to establish when taking over a large multi-repository system?
 - Which architecture conclusions must require runtime evidence?
@@ -329,4 +338,4 @@ Interfaces, names, and directory layouts remain open for discussion before the f
 
 ---
 
-**Kantu does not try to draw a beautiful architecture diagram whose claims have never been proven. It cares whether every important claim on that diagram knows where it came from.**
+**ArchScope does not try to draw a beautiful architecture diagram whose claims have never been proven. It cares whether every important claim on that diagram knows where it came from.**

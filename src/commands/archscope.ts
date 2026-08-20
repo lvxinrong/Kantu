@@ -1,0 +1,268 @@
+import type { CommandDefinition, CommandResult } from '@deepseek-ai/dsh-commands'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { ToolExecutionInput } from '@deepseek-ai/dsh-tools'
+
+import type { ArchScopeStatusResult, SystemScanProgress, SystemScanResult } from '../contracts/system-scan.js'
+import type { ArchScopeIntent, ArchScopeIntentParseResult } from '../intents.js'
+import { createStatusMessage } from '../tools/status.js'
+import { createSystemScanMessage } from '../tools/system-scan.js'
+
+const SUBCOMMAND_ALIASES = new Map<string, string>([
+  ['system', 'system'],
+  ['系统级扫描', 'system'],
+  ['project', 'project'],
+  ['项目级扫描', 'project'],
+  ['status', 'status'],
+  ['状态', 'status'],
+  ['resume', 'resume'],
+  ['继续', 'resume'],
+  ['help', 'help'],
+  ['帮助', 'help'],
+])
+
+function commandHelp(commandName: 'archscope' | 'kantu'): string {
+  return `ArchScope commands:
+  /${commandName} system [--refresh]
+  /${commandName} project <project-key> [--refresh]
+  /${commandName} status [run-id]
+  /${commandName} resume [run-id]
+  /${commandName} help
+
+Chinese aliases: 系统级扫描, 项目级扫描, 状态, 继续, 帮助`
+}
+
+export const ARCHSCOPE_COMMAND_HELP = commandHelp('archscope')
+/** @deprecated Use ARCHSCOPE_COMMAND_HELP. */
+export const KANTU_COMMAND_HELP = commandHelp('kantu')
+
+function failure(message: string, help: string): ArchScopeIntentParseResult {
+  return { ok: false, error: `${message}\n\n${help}` }
+}
+
+function parseRefreshArguments(args: string[], usage: string, help: string): ArchScopeIntentParseResult | boolean {
+  if (args.length === 0) return false
+  if (args.length === 1 && args[0] === '--refresh') return true
+  return failure(`Invalid arguments. Usage: ${usage}`, help)
+}
+
+function parseOptionalRunId(args: string[], kind: 'run.status' | 'run.resume', usage: string, help: string): ArchScopeIntentParseResult {
+  if (args.length > 1 || args[0]?.startsWith('-')) {
+    return failure(`Invalid arguments. Usage: ${usage}`, help)
+  }
+  return {
+    ok: true,
+    intent: args[0] === undefined ? { kind } : { kind, runId: args[0] },
+  }
+}
+
+export function parseArchScopeCommand(rawInput: string, commandName: 'archscope' | 'kantu' = 'archscope'): ArchScopeIntentParseResult {
+  const help = commandHelp(commandName)
+  const command = `/${commandName}`
+  const tokens = rawInput.trim().split(/\s+/u).filter(Boolean)
+  if (tokens.length === 0) return { ok: true, intent: { kind: 'help' } }
+
+  const [rawSubcommand, ...args] = tokens
+  const subcommand = rawSubcommand === undefined ? undefined : SUBCOMMAND_ALIASES.get(rawSubcommand)
+
+  switch (subcommand) {
+    case 'help':
+      return args.length === 0
+        ? { ok: true, intent: { kind: 'help' } }
+        : failure(`Invalid arguments. Usage: ${command} help`, help)
+    case 'system': {
+      const refresh = parseRefreshArguments(args, `${command} system [--refresh]`, help)
+      return typeof refresh === 'boolean'
+        ? { ok: true, intent: { kind: 'system.scan', refresh } }
+        : refresh
+    }
+    case 'project': {
+      const [projectKey, ...rest] = args
+      if (projectKey === undefined || projectKey.startsWith('-')) {
+        return failure(`Missing project-key. Usage: ${command} project <project-key> [--refresh]`, help)
+      }
+      const refresh = parseRefreshArguments(rest, `${command} project <project-key> [--refresh]`, help)
+      return typeof refresh === 'boolean'
+        ? { ok: true, intent: { kind: 'project.scan', projectKey, refresh } }
+        : refresh
+    }
+    case 'status':
+      return parseOptionalRunId(args, 'run.status', `${command} status [run-id]`, help)
+    case 'resume':
+      return parseOptionalRunId(args, 'run.resume', `${command} resume [run-id]`, help)
+    default:
+      return failure(`Unknown ArchScope subcommand: ${rawSubcommand ?? ''}`, help)
+  }
+}
+
+export interface ArchScopeCommandRuntime {
+  scanSystem(options: { refresh?: boolean, signal?: AbortSignal, workspaceRoot?: string, agent?: ToolExecutionInput['agent'], onProgress?: (progress: SystemScanProgress) => void }): Promise<SystemScanResult>
+  status(runId?: string, options?: { workspaceRoot?: string }): Promise<ArchScopeStatusResult>
+}
+
+/** @deprecated Use ArchScopeCommandRuntime. */
+export type KantuCommandRuntime = ArchScopeCommandRuntime
+
+function createSystemScanStartedMessage(refresh: boolean) {
+  return createUserMessage({
+    content: [{
+      type: 'text',
+      text: `Reply to the user in Chinese with one short sentence confirming that ArchScope has started the full system-level scan in the current DSH workspace${refresh ? ' with index refresh enabled' : ''}. Mention that it will discover projects, prepare indexes, collect evidence, and report progress automatically. Do not call any tools.`,
+    }],
+    source: {
+      kind: 'plugin',
+      plugin: 'archscope',
+      form: 'notice',
+      summary: 'ArchScope 系统级扫描已开始 · 正在发现工程',
+    },
+  })
+}
+
+function createSystemScanCompletedMessage(result: SystemScanResult) {
+  const sourceAnalysisComplete = result.projectCount > 0
+    && result.indexedProjectCount === result.projectCount
+    && result.evidenceProjectCount === result.projectCount
+    && result.scopeViolationCount === 0
+  const systemAnalysis = sourceAnalysisComplete
+    ? 'source-level analysis completed; runtime/production evidence remains unconfirmed'
+    : 'source-level analysis is incomplete; inspect index, evidence, and scope counts'
+  const projectAnalysis = result.gate === 'READY' ? 'available' : 'not yet available'
+
+  return createUserMessage({
+    content: [{
+      type: 'text',
+      text: `ArchScope's deterministic system-level scan has finished. Report these exact user-facing facts in concise Chinese and do not call any tools:
+- scan execution: ${result.reused ? 'reused from a compatible completed run' : 'completed now'}
+- discovered projects: ${result.projectCount}
+- fresh indexes: ${result.indexedProjectCount}/${result.projectCount}
+- collected project evidence: ${result.evidenceProjectCount}/${result.projectCount}
+- actual evidence scope violations: ${result.scopeViolationCount}
+- system-level analysis: ${systemAnalysis}
+- system artifact validation (structure, evidence, scope, gate, and redaction): ${result.validation}
+- project-level analysis: ${projectAnalysis}
+- artifact: ${result.outputDirectory}/system/00-system-fact-base.md
+
+Put these raw fields under a final "技术详情" line instead of leading with them:
+- run: ${result.runId}
+- machine status: ${result.status}
+- project-scan gate: ${result.gate}
+
+Do not describe the aggregate validation field as structure-only validation. Clearly distinguish source-level completion from missing runtime evidence and from the project-level gate.`,
+    }],
+    source: {
+      kind: 'plugin',
+      plugin: 'archscope',
+      form: 'notice',
+      summary: `ArchScope 系统级扫描结束 · ${result.evidenceProjectCount}/${result.projectCount} 个工程已取证 · ${result.gate}`,
+    },
+  })
+}
+
+function createSystemScanFailedMessage(error: unknown) {
+  const reason = error instanceof Error ? error.message : String(error)
+  return createUserMessage({
+    content: [{
+      type: 'text',
+      text: `ArchScope's deterministic system scan failed. Tell the user concisely in Chinese that the scan failed with this reason and do not call any tools: ${reason}`,
+    }],
+    source: {
+      kind: 'plugin',
+      plugin: 'archscope',
+      form: 'notice',
+      summary: 'ArchScope 系统级扫描失败',
+    },
+  })
+}
+
+function createSystemScanProgressMessage(progress: SystemScanProgress) {
+  return createUserMessage({
+    content: [{
+      type: 'text',
+      text: `Reply to the user in Chinese with this one-line ArchScope progress update and do not call any tools: ${progress.message}`,
+    }],
+    source: {
+      kind: 'plugin',
+      plugin: 'archscope',
+      form: 'notice',
+      summary: `ArchScope · ${progress.message}`,
+    },
+  })
+}
+
+export async function executeArchScopeIntent(
+  intent: ArchScopeIntent,
+  runtime: ArchScopeCommandRuntime,
+  signal?: AbortSignal,
+  workspaceRoot?: string,
+  help = ARCHSCOPE_COMMAND_HELP,
+): Promise<CommandResult> {
+  switch (intent.kind) {
+    case 'help':
+      return { kind: 'success', text: help }
+    case 'run.status':
+      return { kind: 'success', text: createStatusMessage(await runtime.status(intent.runId, { workspaceRoot })) }
+    case 'system.scan': {
+      const result = await runtime.scanSystem({ refresh: intent.refresh, signal, workspaceRoot })
+      return { kind: 'success', text: createSystemScanMessage(result) }
+    }
+    case 'project.scan':
+      return {
+        kind: 'error',
+        text: 'Project-level scanning is not implemented yet. The system-level workflow is available, but no project scan was started.',
+      }
+    case 'run.resume':
+      return {
+        kind: 'error',
+        text: 'ArchScope persists system runs, but resumable task execution is not implemented yet. No action was taken.',
+      }
+  }
+}
+
+export function createArchScopeCommand(
+  runtime: ArchScopeCommandRuntime,
+  commandName: 'archscope' | 'kantu' = 'archscope',
+): CommandDefinition {
+  return {
+    name: commandName,
+    description: 'run and inspect evidence-driven ArchScope architecture scans',
+    input: { hint: 'system | project <project-key> | status | resume | help' },
+    handler: async ({ rawInput, signal, agent }) => {
+      const parsed = parseArchScopeCommand(rawInput, commandName)
+      if (!parsed.ok) return { kind: 'error', text: parsed.error }
+
+      if (parsed.intent.kind === 'system.scan') {
+        agent.followup(createSystemScanStartedMessage(parsed.intent.refresh))
+        try {
+          const result = await runtime.scanSystem({
+            refresh: parsed.intent.refresh,
+            signal,
+            workspaceRoot: agent.session.header.cwd,
+            agent,
+            onProgress(progress) {
+              agent.followup(createSystemScanProgressMessage(progress))
+            },
+          })
+          agent.followup(createSystemScanCompletedMessage(result))
+          return { kind: 'success', text: createSystemScanMessage(result) }
+        } catch (error: unknown) {
+          agent.followup(createSystemScanFailedMessage(error))
+          throw error
+        }
+      }
+
+      return executeArchScopeIntent(parsed.intent, runtime, signal, agent.session.header.cwd, commandHelp(commandName))
+    },
+  }
+}
+
+/** @deprecated Use parseArchScopeCommand. */
+export function parseKantuCommand(rawInput: string): ArchScopeIntentParseResult {
+  return parseArchScopeCommand(rawInput, 'kantu')
+}
+
+/** @deprecated Use executeArchScopeIntent. */
+export const executeKantuIntent = executeArchScopeIntent
+
+/** @deprecated Use createArchScopeCommand. */
+export function createKantuCommand(runtime: ArchScopeCommandRuntime): CommandDefinition {
+  return createArchScopeCommand(runtime, 'kantu')
+}

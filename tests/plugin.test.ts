@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest'
 
 import { apply } from '../src/index.js'
 
-describe('Kantu plugin registration', () => {
-  it('registers /kantu through the optional commands service', () => {
+describe('ArchScope plugin registration', () => {
+  it('registers ArchScope interaction surfaces and deprecated aliases', () => {
     const tools: ToolDefinition[] = []
     const commands: CommandDefinition[] = []
     const ctx = new Context().extend({
@@ -37,9 +37,14 @@ describe('Kantu plugin registration', () => {
       registerStatusTool: true,
     })
 
-    expect(commands[0]?.name).toBe('kantu')
+    expect(commands.map(command => command.name)).toEqual(['archscope', 'kantu'])
     expect(commands[0]?.input?.hint).toContain('system')
-    expect(tools.map(tool => tool.name).sort()).toEqual(['kantu_scan_system', 'kantu_status'])
+    expect(tools.map(tool => tool.name).sort()).toEqual([
+      'archscope_scan_system',
+      'archscope_status',
+      'kantu_scan_system',
+      'kantu_status',
+    ])
   })
 
   it('can disable both interaction surfaces through config', () => {
@@ -52,8 +57,10 @@ describe('Kantu plugin registration', () => {
       registerCommand: false,
       registerSystemScanTool: false,
       registerStatusTool: false,
+      registerLegacyAliases: false,
     })
 
-    expect(ctx.kantu).toBeDefined()
+    expect(ctx.archscope).toBeDefined()
+    expect(ctx.kantu).toBeUndefined()
   })
 })

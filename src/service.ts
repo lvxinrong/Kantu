@@ -8,7 +8,7 @@ import type { ToolExecutionInput } from '@deepseek-ai/dsh-tools'
 import type { Config } from './config.js'
 import {
   SYSTEM_SCAN_PROTOCOL,
-  type KantuStatusResult,
+  type ArchScopeStatusResult,
   type ProjectRegistry,
   type SystemScanResult,
   type SystemScanRunState,
@@ -22,7 +22,9 @@ import { discoverProjects } from './system/discovery.js'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    kantu: KantuService
+    archscope: ArchScopeService
+    /** @deprecated Use ctx.archscope. */
+    kantu?: ArchScopeService
   }
 }
 
@@ -36,12 +38,12 @@ function errorMessage(error: unknown): string {
 
 function safeOutputRoot(workspaceRoot: string, outputDirectory: string): string {
   if (path.isAbsolute(outputDirectory)) {
-    throw new Error('Kantu outputDirectory must be relative to workspaceRoot.')
+    throw new Error('ArchScope outputDirectory must be relative to workspaceRoot.')
   }
   const outputRoot = path.resolve(workspaceRoot, outputDirectory)
   const relative = path.relative(workspaceRoot, outputRoot)
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error('Kantu outputDirectory must be a non-empty path inside workspaceRoot.')
+    throw new Error('ArchScope outputDirectory must be a non-empty path inside workspaceRoot.')
   }
   return outputRoot
 }
@@ -69,12 +71,13 @@ interface ResolvedWorkspace {
   outputDirectory: string
 }
 
-export class KantuService extends Service {
+export class ArchScopeService extends Service {
   private readonly activeScans = new Map<string, Promise<SystemScanResult>>()
   private readonly analyzer: SystemAnalyzer
 
   constructor(ctx: Context, private readonly config: Config, analyzer?: SystemAnalyzer) {
-    super(ctx, 'kantu')
+    super(ctx, 'archscope')
+    if (config.registerLegacyAliases !== false) ctx.reflect.provide('kantu', this)
     this.analyzer = analyzer ?? new DshSystemAnalyzer(ctx, config)
   }
 
@@ -91,7 +94,7 @@ export class KantuService extends Service {
     }
   }
 
-  async status(runId?: string, options: StatusOptions = {}): Promise<KantuStatusResult> {
+  async status(runId?: string, options: StatusOptions = {}): Promise<ArchScopeStatusResult> {
     const workspace = this.resolveWorkspace(options.workspaceRoot)
     const state = await this.readRunState(workspace.outputRoot, runId)
     if (state === undefined) {
@@ -129,7 +132,7 @@ export class KantuService extends Service {
     }
     const configured = this.config.workspaceRoot?.trim()
     if ((sessionWorkspace === undefined || sessionWorkspace === '') && (configured === undefined || configured === '' || !path.isAbsolute(configured))) {
-      throw new Error('Kantu requires the current DeepSeek Harness session workspace. Set an absolute workspaceRoot only for headless or embedded use.')
+      throw new Error('ArchScope requires the current DeepSeek Harness session workspace. Set an absolute workspaceRoot only for headless or embedded use.')
     }
     const root = configured === undefined || configured === ''
       ? path.resolve(sessionWorkspace as string)
@@ -281,7 +284,7 @@ export class KantuService extends Service {
         if (typeof latest.runId !== 'string') return undefined
         resolvedRunId = latest.runId
       }
-      if (!/^[a-z0-9][a-z0-9-]*$/u.test(resolvedRunId)) throw new Error('Invalid Kantu run id.')
+      if (!/^[a-z0-9][a-z0-9-]*$/u.test(resolvedRunId)) throw new Error('Invalid ArchScope run id.')
       return JSON.parse(await readFile(path.join(outputRoot, 'runs', resolvedRunId, 'state.json'), 'utf8')) as SystemScanRunState
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
@@ -304,3 +307,6 @@ export class KantuService extends Service {
     }
   }
 }
+
+/** @deprecated Use ArchScopeService. */
+export { ArchScopeService as KantuService }

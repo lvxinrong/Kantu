@@ -11,14 +11,16 @@ export interface Config {
   registerCommand: boolean
   registerSystemScanTool: boolean
   registerStatusTool: boolean
+  /** Temporarily expose the legacy /kantu command and kantu_* tools. */
+  registerLegacyAliases?: boolean
 }
 
 export const Config: Schema<Config> = Schema.object({
   workspaceRoot: Schema.string()
-    .description('Optional scan-root override. By default Kantu uses the current DeepSeek Harness session workspace; relative overrides resolve from that workspace.'),
+    .description('Optional scan-root override. By default ArchScope uses the current DeepSeek Harness session workspace; relative overrides resolve from that workspace.'),
   outputDirectory: Schema.string()
     .default('kantu_docs')
-    .description('Directory where Kantu will write generated analysis artifacts.'),
+    .description('Directory where ArchScope will write generated analysis artifacts.'),
   discoveryMaxDepth: Schema.number()
     .min(1)
     .max(12)
@@ -40,11 +42,14 @@ export const Config: Schema<Config> = Schema.object({
     .description('Maximum concurrent indexing and system evidence tasks.'),
   registerCommand: Schema.boolean()
     .default(true)
-    .description('Register the deterministic /kantu command when a command adapter is available.'),
+    .description('Register the deterministic /archscope command when a command adapter is available.'),
   registerSystemScanTool: Schema.boolean()
     .default(true)
-    .description('Register the kantu_scan_system model-facing tool.'),
+    .description('Register the archscope_scan_system model-facing tool.'),
   registerStatusTool: Schema.boolean()
     .default(true)
-    .description('Register the kantu_status run inspection tool.'),
+    .description('Register the archscope_status run inspection tool.'),
+  registerLegacyAliases: Schema.boolean()
+    .default(true)
+    .description('Temporarily register deprecated /kantu and kantu_* aliases for existing installations.'),
 })

@@ -8,7 +8,7 @@ Required sequence:
 2. Assign stable identities from workspace-relative paths.
 3. Create or reuse one independent index per project, verify that it is ready, and persist one explicit record per project, including unavailable or failed providers.
 4. Run one isolated, read-only evidence worker per fresh index to collect coarse candidates for entries, infrastructure, capabilities, external dependencies, data ownership, aliases, and conflicts.
-5. Let one writer normalize terminology, retain conflicts, and render the 22-section fact base.
+5. Let one writer normalize terminology and render the 22-section fact base as a cross-project worldview. Aggregate entry surfaces, capability themes, infrastructure, data categories, relationships, and conflict classes; keep route, symbol, configuration, and implementation details only in evidence JSON.
 6. Generate the three required Mermaid diagrams.
 7. Run deterministic structure, gate, artifact, and redaction validation.
 8. Persist the protocol lock and run state. Do not continue to project analysis automatically.

@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  createKantuCommand,
-  executeKantuIntent,
-  KANTU_COMMAND_HELP,
+  createArchScopeCommand,
+  executeArchScopeIntent,
+  ARCHSCOPE_COMMAND_HELP,
   parseKantuCommand,
-  type KantuCommandRuntime,
-} from '../src/commands/kantu.js'
+  parseArchScopeCommand,
+  type ArchScopeCommandRuntime,
+} from '../src/commands/archscope.js'
 
-describe('parseKantuCommand', () => {
+describe('parseArchScopeCommand', () => {
   it.each([
     ['', { kind: 'help' }],
     ['help', { kind: 'help' }],
@@ -23,7 +24,7 @@ describe('parseKantuCommand', () => {
     ['resume run-1', { kind: 'run.resume', runId: 'run-1' }],
     ['继续', { kind: 'run.resume' }],
   ])('parses %j into a stable intent', (input, intent) => {
-    expect(parseKantuCommand(input)).toEqual({ ok: true, intent })
+    expect(parseArchScopeCommand(input)).toEqual({ ok: true, intent })
   })
 
   it.each([
@@ -34,15 +35,22 @@ describe('parseKantuCommand', () => {
     'resume --refresh',
     'unknown',
   ])('rejects invalid input %j without guessing', (input) => {
-    const result = parseKantuCommand(input)
+    const result = parseArchScopeCommand(input)
 
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toContain('/kantu help')
+    if (!result.ok) expect(result.error).toContain('/archscope help')
+  })
+
+  it('keeps /kantu parsing as a deprecated compatibility alias', () => {
+    expect(parseKantuCommand('system --refresh')).toEqual({
+      ok: true,
+      intent: { kind: 'system.scan', refresh: true },
+    })
   })
 })
 
-describe('executeKantuIntent', () => {
-  const runtime: KantuCommandRuntime = {
+describe('executeArchScopeIntent', () => {
+  const runtime: ArchScopeCommandRuntime = {
     async scanSystem() {
       return {
         runId: 'system-1',
@@ -74,21 +82,21 @@ describe('executeKantuIntent', () => {
   }
 
   it('renders deterministic help', async () => {
-    await expect(executeKantuIntent({ kind: 'help' }, runtime)).resolves.toEqual({
+    await expect(executeArchScopeIntent({ kind: 'help' }, runtime)).resolves.toEqual({
       kind: 'success',
-      text: KANTU_COMMAND_HELP,
+      text: ARCHSCOPE_COMMAND_HELP,
     })
   })
 
   it('reports the latest persisted run', async () => {
-    await expect(executeKantuIntent({ kind: 'run.status' }, runtime)).resolves.toEqual({
+    await expect(executeArchScopeIntent({ kind: 'run.status' }, runtime)).resolves.toEqual({
       kind: 'success',
       text: expect.stringContaining('system-1'),
     })
   })
 
   it('executes the system scan and reports its blocked evidence gate', async () => {
-    await expect(executeKantuIntent({ kind: 'system.scan', refresh: false }, runtime)).resolves.toEqual({
+    await expect(executeArchScopeIntent({ kind: 'system.scan', refresh: false }, runtime)).resolves.toEqual({
       kind: 'success',
       text: expect.stringContaining('system analysis awaiting source evidence'),
     })
@@ -97,7 +105,7 @@ describe('executeKantuIntent', () => {
   it('forwards the receiving session workspace to command operations', async () => {
     let scanWorkspace: string | undefined
     let statusWorkspace: string | undefined
-    const scopedRuntime: KantuCommandRuntime = {
+    const scopedRuntime: ArchScopeCommandRuntime = {
       async scanSystem(options) {
         scanWorkspace = options.workspaceRoot
         return runtime.scanSystem(options)
@@ -108,8 +116,8 @@ describe('executeKantuIntent', () => {
       },
     }
 
-    await executeKantuIntent({ kind: 'system.scan', refresh: false }, scopedRuntime, undefined, '/workspace/current')
-    await executeKantuIntent({ kind: 'run.status' }, scopedRuntime, undefined, '/workspace/current')
+    await executeArchScopeIntent({ kind: 'system.scan', refresh: false }, scopedRuntime, undefined, '/workspace/current')
+    await executeArchScopeIntent({ kind: 'run.status' }, scopedRuntime, undefined, '/workspace/current')
 
     expect(scanWorkspace).toBe('/workspace/current')
     expect(statusWorkspace).toBe('/workspace/current')
@@ -119,7 +127,7 @@ describe('executeKantuIntent', () => {
     const queued: unknown[] = []
     let scanWorkspace: string | undefined
     let refresh: boolean | undefined
-    const command = createKantuCommand({
+    const command = createArchScopeCommand({
       ...runtime,
       async scanSystem(options) {
         scanWorkspace = options.workspaceRoot
@@ -129,7 +137,7 @@ describe('executeKantuIntent', () => {
     })
 
     const result = await command.handler({
-      commandId: 'cmd-kantu-1',
+      commandId: 'cmd-archscope-1',
       rawInput: ' 系统级扫描 --refresh',
       signal: new AbortController().signal,
       agent: {
@@ -142,7 +150,7 @@ describe('executeKantuIntent', () => {
 
     expect(result).toMatchObject({
       kind: 'success',
-      text: expect.stringContaining('Kantu system scan completed'),
+      text: expect.stringContaining('ArchScope system scan completed'),
     })
     expect(scanWorkspace).toBe('/workspace/current')
     expect(refresh).toBe(true)
@@ -151,9 +159,9 @@ describe('executeKantuIntent', () => {
       role: 'user',
       source: {
         kind: 'plugin',
-        plugin: 'kantu',
+        plugin: 'archscope',
         form: 'notice',
-        summary: 'Kantu 系统级扫描已开始 · 正在发现工程',
+        summary: 'ArchScope 系统级扫描已开始 · 正在发现工程',
       },
       content: [{
         type: 'text',
@@ -164,9 +172,9 @@ describe('executeKantuIntent', () => {
       role: 'user',
       source: {
         kind: 'plugin',
-        plugin: 'kantu',
+        plugin: 'archscope',
         form: 'notice',
-        summary: 'Kantu 系统级扫描结束 · 1/2 个工程已取证 · BLOCKED',
+        summary: 'ArchScope 系统级扫描结束 · 1/2 个工程已取证 · BLOCKED',
       },
       content: [{
         type: 'text',

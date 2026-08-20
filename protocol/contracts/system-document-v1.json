@@ -1,6 +1,6 @@
 {
   "contractId": "kantu/contract/system-document/v1",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "metadata": {
     "协议版本": ["kantu/contract/system-document/v1"],
     "文档状态": ["完整", "草稿"],
@@ -48,5 +48,37 @@
   "requiredSelfChecks": ["工程注册表已生成", "每个工程都有索引状态", "关键待确认问题已分级", "证据仲裁已执行", "敏感信息已脱敏", "源码存在与生产启用已区分", "系统级边界未越界", "项目级门禁"],
   "requiredEvidenceSourceTypes": ["运行态", "人工确认", "部署发布", "代码图谱", "源码", "历史文档"],
   "qualityDimensions": ["工程覆盖", "生产边界可信度", "入口链路可信度", "内部关系可信度", "外部依赖可信度", "数据归属可信度"],
-  "evidenceCoverageObjects": ["工程", "生产服务", "系统入口", "入口链路", "内部关系", "外部依赖", "数据资产"]
+  "evidenceCoverageObjects": ["工程", "生产服务", "系统入口", "入口链路", "内部关系", "外部依赖", "数据资产"],
+  "boundaryRules": {
+    "maxDocumentCharacters": 100000,
+    "requiredDetailPointer": "system/evidence/index.json",
+    "detailSensitiveSections": [
+      "## 5. 系统入口",
+      "## 6. 基础设施事实",
+      "## 8. 系统能力地图（技术视角）",
+      "## 10. 外部系统与第三方依赖",
+      "## 11. 数据资产与归属边界",
+      "## 15. 冲突与待复核结论"
+    ],
+    "maxTableRowsBySection": {
+      "## 5. 系统入口": 6,
+      "## 6. 基础设施事实": 10,
+      "## 7. 入口链路概览": 4,
+      "## 8. 系统能力地图（技术视角）": 12,
+      "## 9. 系统内部跨项目关系与调用边界": 20,
+      "## 10. 外部系统与第三方依赖": 12,
+      "## 11. 数据资产与归属边界": 8,
+      "## 13. 术语表": 15,
+      "## 14. 当前可信结论": 7,
+      "## 15. 冲突与待复核结论": 7
+    },
+    "forbiddenDetailPatterns": [
+      { "id": "HTTP_ROUTE_DETAIL", "source": "\\b(?:GET|POST|PUT|DELETE|PATCH)\\s+/", "flags": "iu" },
+      { "id": "FRAMEWORK_ANNOTATION_DETAIL", "source": "@[A-Z][A-Za-z]+", "flags": "u" },
+      { "id": "IMPLEMENTATION_SYMBOL_DETAIL", "source": "\\b(?:Controller|Service|Repository|Mapper)\\.[A-Za-z_$]", "flags": "u" },
+      { "id": "AUTHORIZATION_DETAIL", "source": "Bearer\\s+", "flags": "iu" },
+      { "id": "SOURCE_LINE_DETAIL", "source": "(?:src|app|lib)/[^\\s|]+:\\d+", "flags": "iu" }
+    ],
+    "minTrustedConclusionRows": 5
+  }
 }

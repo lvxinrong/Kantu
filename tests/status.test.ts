@@ -17,7 +17,7 @@ describe('createStatusMessage', () => {
       outputDirectory: '.kantu/artifacts',
     })
 
-    expect(message).toContain('No Kantu run was found')
+    expect(message).toContain('No ArchScope run was found')
     expect(message).toContain('.kantu/artifacts')
   })
 
@@ -36,7 +36,7 @@ describe('createStatusMessage', () => {
     })
 
     expect(message.split('\n')[0]).toBe(
-      'Kantu system scan finished · 3 projects · system analysis awaiting source evidence.',
+      'ArchScope system scan finished · 3 projects · system analysis awaiting source evidence.',
     )
     expect(message).toContain('Fresh indexes 2/3 · collected evidence 1/3 · scope violations 0.')
     expect(message).toContain('System artifact validation PASSED · project-scan gate BLOCKED.')

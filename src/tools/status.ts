@@ -1,11 +1,11 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
-import type { KantuStatusResult } from '../contracts/system-scan.js'
-import type { KantuService } from '../service.js'
+import type { ArchScopeStatusResult } from '../contracts/system-scan.js'
+import type { ArchScopeService } from '../service.js'
 
-export function createStatusMessage(status: KantuStatusResult): string {
+export function createStatusMessage(status: ArchScopeStatusResult): string {
   if (!status.found) {
-    return `No Kantu run was found. Analysis artifacts will be written to ${status.outputDirectory}.`
+    return `No ArchScope run was found. Analysis artifacts will be written to ${status.outputDirectory}.`
   }
 
   const scanOutcome = status.status === 'FAILED'
@@ -22,7 +22,7 @@ export function createStatusMessage(status: KantuStatusResult): string {
     : 'awaiting source evidence'
 
   return [
-    `Kantu system scan ${scanOutcome} · ${status.projectCount} projects · system analysis ${analysisOutcome}.`,
+    `ArchScope system scan ${scanOutcome} · ${status.projectCount} projects · system analysis ${analysisOutcome}.`,
     `Fresh indexes ${status.indexedProjectCount}/${status.projectCount} · collected evidence ${status.evidenceProjectCount}/${status.projectCount} · scope violations ${status.scopeViolationCount}.`,
     `System artifact validation ${status.validation} · project-scan gate ${status.gate}.`,
     `Artifacts: ${status.outputDirectory}/system/00-system-fact-base.md`,
@@ -30,12 +30,15 @@ export function createStatusMessage(status: KantuStatusResult): string {
   ].join('\n')
 }
 
-export function createStatusTool(service: KantuService) {
+export function createStatusTool(
+  service: ArchScopeService,
+  name: 'archscope_status' | 'kantu_status' = 'archscope_status',
+) {
   return defineTool({
-    name: 'kantu_status',
-    description: 'Inspect a persisted Kantu scan run. Omit runId to inspect the latest run.',
+    name,
+    description: `${name.startsWith('kantu_') ? '[Deprecated alias] ' : ''}Inspect a persisted ArchScope scan run. Omit runId to inspect the latest run.`,
     parameters: {
-      runId: { type: 'string', description: 'Optional Kantu run id.' },
+      runId: { type: 'string', description: 'Optional ArchScope run id.' },
     },
     output: {
       schema: {
@@ -54,7 +57,7 @@ export function createStatusTool(service: KantuService) {
           outputDirectory: { type: 'string', required: true },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: createStatusMessage(value as unknown as KantuStatusResult) }],
+      render: (_args, value) => [{ type: 'text', text: createStatusMessage(value as unknown as ArchScopeStatusResult) }],
     },
     async execute(args, exec) {
       return service.status(args.runId, { workspaceRoot: exec.agent?.session.header.cwd })

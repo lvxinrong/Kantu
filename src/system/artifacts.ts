@@ -178,26 +178,205 @@ export function prepareSystemArtifacts(
   return { factBase, validation, protocolLock: pack.lock }
 }
 
-function projectRows(projects: ProjectRecord[]): string {
-  if (projects.length === 0) return '| 当前未发现 Git 工程 | 待确认 | unknown | UNCONFIRMED | 无 | |'
-  return projects.map(project => `| ${markdownCell(project.projectDir)} | ${markdownCell(project.projectKey)} | ${project.projectType} | ${project.productionStatus} | ${markdownCell(project.classificationEvidence.join(', '))} | 仅工程发现与构建标记，运行态待确认 |`).join('\n')
-}
-
-function evidenceRows(
-  evidence: SystemEvidenceBundle,
-  select: (record: ProjectSystemEvidence) => string[],
-  empty: string,
-  maxPerProject: number,
-): string {
-  const rows = evidence.records.flatMap(record => select(record).slice(0, maxPerProject).map(item =>
-    `| ${markdownCell(record.projectDir)} | ${markdownCell(summarizeText(item))} | 代码图谱/安全元数据 | 源码视角确认 | 运行态待确认 |`,
-  ))
-  return rows.length === 0 ? `| 待确认 | ${empty} | 当前未发现 | 当前未发现 | 待确认 |` : rows.join('\n')
-}
-
 function summarizeText(value: string, maxLength = 280): string {
   const normalized = value.replace(/\s+/gu, ' ').trim()
   return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 1)}…`
+}
+
+const PROJECT_TYPE_LABELS: Record<ProjectRecord['projectType'], string> = {
+  'android-app': 'Android 客户端',
+  'data-engineering': '数据工程',
+  'deployment-config': '部署与环境配置',
+  'dotnet-project': '.NET 工程',
+  'flutter-app': 'Flutter 客户端',
+  'go-project': 'Go 工程',
+  'ios-app': 'iOS 客户端',
+  'java-project': 'Java 工程',
+  'node-service': 'Node.js 服务',
+  'python-project': 'Python 工程',
+  'react-native-app': 'React Native 客户端',
+  'unknown': '待分类工程',
+  'web-frontend': 'Web/H5 前端',
+  'wechat-miniprogram': '微信小程序',
+}
+
+const SERVER_PROJECT_TYPES = new Set<ProjectRecord['projectType']>([
+  'dotnet-project',
+  'go-project',
+  'java-project',
+  'node-service',
+  'python-project',
+])
+
+interface EntrySurface {
+  name: string
+  projects: ProjectRecord[]
+  rawEvidenceCount: number
+  external: boolean
+}
+
+interface ThemeDefinition {
+  name: string
+  pattern: RegExp
+}
+
+interface AggregatedTheme {
+  name: string
+  projects: string[]
+  evidenceCount: number
+}
+
+const CAPABILITY_THEMES: ThemeDefinition[] = [
+  { name: '身份、组织与权限', pattern: /auth|identity|login|permission|rbac|role|organization|认证|登录|权限|角色|组织/iu },
+  { name: '销售、客户与商业运营', pattern: /sales|customer|client|merchant|partner|market|order|commerce|销售|客户|商户|伙伴|市场|订单|经营/iu },
+  { name: '数据分析、报表与看板', pattern: /analytic|dashboard|report|metric|kpi|statistics|business intelligence|\bbi\b|分析|看板|报表|指标|统计|绩效/iu },
+  { name: '消息、通知与事件', pattern: /message|notification|notify|push|event|alert|sms|email|消息|通知|推送|事件|告警|短信|邮件/iu },
+  { name: '任务、流程与审批', pattern: /task|workflow|approval|schedule|job|任务|流程|审批|调度|作业/iu },
+  { name: '内容、文件与导入导出', pattern: /content|file|document|upload|download|import|export|内容|文件|文档|上传|下载|导入|导出/iu },
+  { name: '地图、位置与轨迹', pattern: /\bmap\b|location|geograph|positioning|track|trajectory|地图|位置|定位|轨迹/iu },
+  { name: '人力、招聘与人才', pattern: /human resource|\bhr\b|recruit|talent|candidate|人力|人事|招聘|人才|候选人/iu },
+  { name: '智能化与 AI', pattern: /\bai\b|artificial intelligence|machine learning|recommend|智能|机器学习|推荐/iu },
+  { name: '开放平台与第三方集成', pattern: /integration|open platform|third.party|webhook|外部|开放平台|第三方|集成/iu },
+  { name: '数据加工与同步', pattern: /data fusion|etl|pipeline|sync|stream|batch|数据融合|数据加工|同步|批处理|流处理/iu },
+]
+
+const INFRASTRUCTURE_THEMES: ThemeDefinition[] = [
+  { name: '服务发现与配置中心', pattern: /nacos|consul|etcd|zookeeper|service discovery|config center|配置中心|注册中心|服务发现/iu },
+  { name: '关系型数据库', pattern: /mysql|postgres|postgresql|sql server|mssql|oracle|mariadb|jdbc|关系数据库/iu },
+  { name: '缓存与分布式状态', pattern: /redis|redisson|memcached|cache|缓存|分布式锁/iu },
+  { name: '消息队列与事件流', pattern: /kafka|rabbitmq|rocketmq|pulsar|activemq|message queue|消息队列|事件流/iu },
+  { name: '对象存储与文件服务', pattern: /\boss\b|\bs3\b|cos|obs|minio|object storage|对象存储/iu },
+  { name: '容器与编排', pattern: /docker|kubernetes|\bk8s\b|helm|容器编排/iu },
+  { name: '网关、代理与流量入口', pattern: /gateway|zuul|nginx|kong|traefik|proxy|网关|反向代理/iu },
+  { name: '任务调度', pattern: /xxl.job|quartz|scheduler|cron|调度|定时任务/iu },
+  { name: '可观测性', pattern: /prometheus|grafana|opentelemetry|jaeger|zipkin|sentry|logstash|observability|监控|链路追踪/iu },
+  { name: '持续集成与发布', pattern: /jenkins|github actions|gitlab ci|circleci|pipeline|持续集成|持续交付|发布流水线/iu },
+]
+
+const DATA_THEMES: ThemeDefinition[] = [
+  { name: '关系型表与 Schema', pattern: /table|schema|mysql|postgres|sql server|mssql|oracle|数据库表|数据表|关系型/iu },
+  { name: '缓存与会话数据', pattern: /redis|cache|session|缓存|会话/iu },
+  { name: '消息与事件数据', pattern: /topic|queue|kafka|rabbitmq|rocketmq|event|消息|事件/iu },
+  { name: '文件与对象数据', pattern: /file|document|object storage|\boss\b|\bs3\b|cos|文件|文档|对象存储/iu },
+  { name: '搜索与索引数据', pattern: /elasticsearch|opensearch|solr|search index|搜索|索引/iu },
+  { name: '分析与数仓数据', pattern: /warehouse|starrocks|doris|clickhouse|hive|metric|数仓|指标|分析数据/iu },
+]
+
+const CONFLICT_THEMES: ThemeDefinition[] = [
+  { name: '代码图谱覆盖或解析差异', pattern: /图谱|索引|未索引|未收录|解析|route|file_tree|graph/iu },
+  { name: '文档与源码不一致', pattern: /readme|文档|说明.*不一致|文档滞后|声明.*代码/iu },
+  { name: '配置或运行态证据缺失', pattern: /配置|nacos|运行态|生产|外部化|仓库内无|无法.*核实|不可.*验证/iu },
+  { name: '依赖与装配边界不明确', pattern: /依赖|传递引入|装配|feign|client|sdk|jar/iu },
+  { name: '命名、版本或归属漂移', pattern: /命名|版本|别名|归属|不一致|漂移|历史|遗留/iu },
+  { name: '疑似实现异常（下沉项目级复核）', pattern: /疑似|缺陷|错误|不可用|未实现|注释|硬编码|incomplete|placeholder/iu },
+]
+
+function projectRows(projects: ProjectRecord[], evidence?: SystemEvidenceBundle): string {
+  if (projects.length === 0) return '| 当前未发现 Git 工程 | 待确认 | 待分类工程 | UNCONFIRMED | 无 | 运行态待确认 |'
+  const records = evidence === undefined ? new Map<string, ProjectSystemEvidence>() : collectedRecordMap(evidence)
+  return projects.map(project => `| ${markdownCell(project.projectDir)} | ${markdownCell(project.projectKey)} | ${PROJECT_TYPE_LABELS[effectiveProjectType(project, records.get(project.projectKey))]} | ${project.productionStatus} | ${markdownCell(project.classificationEvidence.slice(0, 3).join(', '))} | 仅确认工程形态，生产归属待确认 |`).join('\n')
+}
+
+function collectedRecordMap(evidence: SystemEvidenceBundle): Map<string, ProjectSystemEvidence> {
+  return new Map(evidence.records.filter(record => record.status === 'COLLECTED').map(record => [record.projectKey, record]))
+}
+
+function effectiveProjectType(project: ProjectRecord, record?: ProjectSystemEvidence): ProjectRecord['projectType'] {
+  if (project.projectType !== 'java-project' && project.projectType !== 'unknown') return project.projectType
+  const primary = record?.projectTypeCandidates[0] ?? ''
+  if (/^(?:原生\s*)?android\b|android (?:application|app|client)|android 应用/iu.test(primary)) return 'android-app'
+  if (/^ios\b|ios (?:application|app|client)|xcode target|objective-c 为主|苹果客户端/iu.test(primary)) return 'ios-app'
+  if (/^flutter\b|flutter (?:application|app|client)/iu.test(primary)) return 'flutter-app'
+  if (/^react native\b|react-native (?:application|app|client)/iu.test(primary)) return 'react-native-app'
+  if (project.projectType === 'unknown' && /微信小程序|wechat miniprogram|mini.program/iu.test(primary)) return 'wechat-miniprogram'
+  if (project.projectType === 'unknown' && /\bh5\b|web.*frontend|前端|single.page|\bspa\b|vue|react|uni-app|静态 html/iu.test(primary)) return 'web-frontend'
+  if (project.projectType === 'unknown' && /data engineering|etl|数据工程/iu.test(primary)) return 'data-engineering'
+  return project.projectType
+}
+
+function entrySurfaces(registry: Pick<ProjectRegistry, 'projects'>, evidence: SystemEvidenceBundle): EntrySurface[] {
+  const records = collectedRecordMap(evidence)
+  const definitions: Array<{ name: string, types: Set<ProjectRecord['projectType']>, external: boolean }> = [
+    { name: '移动客户端', types: new Set(['android-app', 'ios-app', 'flutter-app', 'react-native-app']), external: true },
+    { name: '微信小程序', types: new Set(['wechat-miniprogram']), external: true },
+    { name: 'Web/H5 前端', types: new Set(['web-frontend']), external: true },
+    { name: '服务/API 边界', types: SERVER_PROJECT_TYPES, external: false },
+    { name: '数据与自动化入口', types: new Set(['data-engineering']), external: false },
+    { name: '部署与运维入口', types: new Set(['deployment-config']), external: false },
+  ]
+  return definitions.flatMap(definition => {
+    const projects = registry.projects.filter(project => {
+      const record = records.get(project.projectKey)
+      if (!definition.types.has(effectiveProjectType(project, record))) return false
+      return definition.external || (record?.entries.length ?? 0) > 0
+    })
+    if (projects.length === 0) return []
+    return [{
+      name: definition.name,
+      projects,
+      rawEvidenceCount: projects.reduce((count, project) => count + (records.get(project.projectKey)?.entries.length ?? 0), 0),
+      external: definition.external,
+    }]
+  })
+}
+
+function aggregateThemes(
+  evidence: SystemEvidenceBundle,
+  select: (record: ProjectSystemEvidence) => string[],
+  definitions: ThemeDefinition[],
+  includeNegative = false,
+): AggregatedTheme[] {
+  const themes = new Map(definitions.map(definition => [definition.name, { name: definition.name, projects: new Set<string>(), evidenceCount: 0 }]))
+  for (const record of evidence.records.filter(item => item.status === 'COLLECTED')) {
+    for (const item of select(record)) {
+      if (!includeNegative && /\b(?:no|without|absent|missing|disabled)\b|未发现|不存在|缺失|未使用|未启用|禁用|没有/iu.test(item)) continue
+      for (const definition of definitions) {
+        if (!definition.pattern.test(item)) continue
+        const theme = themes.get(definition.name)
+        if (theme === undefined) continue
+        theme.projects.add(record.projectDir)
+        theme.evidenceCount += 1
+      }
+    }
+  }
+  return [...themes.values()]
+    .filter(theme => theme.evidenceCount > 0)
+    .map(theme => ({ ...theme, projects: [...theme.projects].sort((left, right) => left.localeCompare(right)) }))
+    .sort((left, right) => right.projects.length - left.projects.length || right.evidenceCount - left.evidenceCount || left.name.localeCompare(right.name))
+}
+
+function formatProjectList(projects: string[], max = 8): string {
+  const displayed = projects.slice(0, max)
+  return `${displayed.join('、')}${projects.length > displayed.length ? ` 等 ${projects.length} 个工程` : ''}`
+}
+
+function projectTypeDistribution(projects: ProjectRecord[], evidence?: SystemEvidenceBundle): string {
+  const counts = new Map<string, number>()
+  const records = evidence === undefined ? new Map<string, ProjectSystemEvidence>() : collectedRecordMap(evidence)
+  for (const project of projects) {
+    const label = PROJECT_TYPE_LABELS[effectiveProjectType(project, records.get(project.projectKey))]
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([label, count]) => `${label} ${count}`)
+    .join('、') || '暂无工程'
+}
+
+function aggregateConflictThemes(evidence: SystemEvidenceBundle): AggregatedTheme[] {
+  const matched = aggregateThemes(evidence, record => record.conflicts, CONFLICT_THEMES, true)
+  const matchedCount = new Set<string>()
+  for (const record of evidence.records) {
+    for (const [index, item] of record.conflicts.entries()) {
+      if (CONFLICT_THEMES.some(theme => theme.pattern.test(item))) matchedCount.add(`${record.projectKey}\u0000${index}`)
+    }
+  }
+  const total = evidence.records.reduce((count, record) => count + record.conflicts.length, 0)
+  if (matchedCount.size < total) {
+    const projects = evidence.records.filter(record => record.conflicts.some(item => !CONFLICT_THEMES.some(theme => theme.pattern.test(item)))).map(record => record.projectDir)
+    matched.push({ name: '其他工程级不确定项', projects: [...new Set(projects)].sort(), evidenceCount: total - matchedCount.size })
+  }
+  return matched.sort((left, right) => right.evidenceCount - left.evidenceCount || left.name.localeCompare(right.name))
 }
 
 interface DependencyRelation {
@@ -242,16 +421,6 @@ function dependencyRelations(registry: Pick<ProjectRegistry, 'projects'>, eviden
   return [...grouped.values()]
 }
 
-function limitPerCaller(relations: DependencyRelation[], maxPerCaller: number): DependencyRelation[] {
-  const counts = new Map<string, number>()
-  return relations.filter(relation => {
-    const count = counts.get(relation.caller) ?? 0
-    if (count >= maxPerCaller) return false
-    counts.set(relation.caller, count + 1)
-    return true
-  })
-}
-
 export function renderSystemFactBase(
   registry: ProjectRegistry,
   indexes: IndexManifest,
@@ -265,23 +434,52 @@ export function renderSystemFactBase(
     && freshIndexes.length === registry.projects.length
     && collected.length === registry.projects.length
     && collected.every(record => record.scopeStatus === 'CLEAN' && record.scopeViolations.length === 0)
-  const entries = collected.reduce((count, record) => count + record.entries.length, 0)
-  const dataAssets = collected.reduce((count, record) => count + record.dataAssets.length, 0)
+  const rawEntries = collected.reduce((count, record) => count + record.entries.length, 0)
+  const rawCapabilities = collected.reduce((count, record) => count + record.capabilityCandidates.length, 0)
+  const rawDataAssets = collected.reduce((count, record) => count + record.dataAssets.length, 0)
   const relations = dependencyRelations(registry, evidence)
   const internalRelations = relations.filter(relation => relation.internal)
   const externalRelations = relations.filter(relation => !relation.internal)
-  const displayedExternalRelations = limitPerCaller(externalRelations, 3)
-  const conflicts = collected.flatMap(record => record.conflicts.slice(0, 3).map(item => ({ project: record.projectDir, item })))
   const totalConflicts = collected.reduce((count, record) => count + record.conflicts.length, 0)
+  const surfaces = entrySurfaces(registry, evidence)
+  const externalSurfaces = surfaces.filter(surface => surface.external)
+  const serviceSurfaces = surfaces.filter(surface => !surface.external)
+  const externalEntryProjects = new Set(externalSurfaces.flatMap(surface => surface.projects.map(project => project.projectKey)))
+  const capabilityThemes = aggregateThemes(evidence, record => record.capabilityCandidates, CAPABILITY_THEMES).slice(0, 12)
+  const infrastructureThemes = aggregateThemes(evidence, record => record.infrastructure, INFRASTRUCTURE_THEMES).slice(0, 10)
+  const dataThemes = aggregateThemes(evidence, record => record.dataAssets, DATA_THEMES).slice(0, 8)
+  const conflictThemes = aggregateConflictThemes(evidence).slice(0, 7)
+  const relationDegree = new Map<string, number>()
+  for (const relation of internalRelations) {
+    relationDegree.set(relation.caller, (relationDegree.get(relation.caller) ?? 0) + 1)
+    relationDegree.set(relation.target, (relationDegree.get(relation.target) ?? 0) + 1)
+  }
+  const relationHubs = [...relationDegree.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 5)
+  const externalByCaller = new Map<string, number>()
+  for (const relation of externalRelations) externalByCaller.set(relation.caller, (externalByCaller.get(relation.caller) ?? 0) + 1)
+  const displayedExternalCallers = [...externalByCaller.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 12)
+  const aliasRecords = collected.filter(record => record.aliases.length > 0).slice(0, 15)
+  const recordsByKey = collectedRecordMap(evidence)
   const registryValid = registry.projectCount === registry.projects.length
     && new Set(registry.projects.map(project => project.projectKey)).size === registry.projects.length
     && registry.projects.every(project => !path.isAbsolute(project.projectDir) && !project.projectDir.split('/').includes('..'))
   const redactionPassed = !validation.issues.some(issue => issue.code === 'SENSITIVE_VALUE_DETECTED')
+  const semanticBoundaryPassed = !validation.issues.some(issue => issue.code === 'SYSTEM_BOUNDARY_EXCEEDED'
+    || issue.code === 'SYSTEM_DOCUMENT_TOO_LARGE' || issue.code === 'SYSTEM_SECTION_TOO_DETAILED')
   const coverageScore = registry.projects.length === 0 ? 0 : complete ? 5 : Math.max(1, Math.floor(5 * collected.length / registry.projects.length))
-  const entryScore = entries === 0 ? 0 : complete ? 3 : 1
+  const entryScore = externalEntryProjects.size === 0 ? 0 : complete ? 3 : 1
   const relationScore = relations.length === 0 ? 0 : complete ? 3 : 1
   const externalScore = externalRelations.length === 0 ? 0 : complete ? 3 : 1
-  const dataScore = dataAssets === 0 ? 0 : complete ? 3 : 1
+  const dataScore = dataThemes.length === 0 ? 0 : complete ? 3 : 1
+  const indexStatuses = ['FRESH', 'PENDING', 'FAILED'].map(status => ({ status, count: indexes.records.filter(record => record.status === status).length }))
+  const highPriority = new Set([
+    ...externalEntryProjects,
+    ...relationHubs.map(([projectDir]) => registry.projects.find(project => project.projectDir === projectDir)?.projectKey).filter((key): key is string => key !== undefined),
+  ])
   return `# 00-系统级事实底座
 
 > 系统级定世界观，项目级定工程画像，模块级定职责边界，代码级定执行链路。
@@ -290,18 +488,18 @@ export function renderSystemFactBase(
 
 ## 0. 文档边界说明
 
-本文件由 Kantu 系统级扫描生成，目标是快速建立系统世界观。扫描已执行真实 Git 工程发现、独立代码智能索引和按工程隔离的粗粒度证据采集。源码存在不代表生产启用；生产边界、生产入口、实际调用和数据归属仍需运行态材料或人工确认。为保持主文档可读，每个工程只展示少量代表性事实；完整明细保存在 system/evidence/index.json 与 system/evidence/<projectKey>.json。
+本文件由 ArchScope 系统级扫描生成，目标是建立跨工程的系统世界观，而不是拼接工程画像。扫描已执行真实 Git 工程发现、独立代码智能索引和按工程隔离的只读证据采集。源码存在不代表生产启用；生产边界、生产入口、实际调用和数据归属仍需运行态材料或人工确认。主文档只保留跨工程聚合结论；${rawEntries} 条原始入口证据、${rawCapabilities} 条原始能力证据、${rawDataAssets} 条原始数据证据及全部冲突完整保存在 system/evidence/index.json 与 system/evidence/<projectKey>.json。
 
 | 契约字段 | 值 | 说明 |
 |---|---|---|
 | 协议版本 | ${SYSTEM_DOCUMENT_PROTOCOL} | 固定值 |
-| 扫描协议 | ${SYSTEM_SCAN_PROTOCOL} | Kantu 运行协议 |
+| 扫描协议 | ${SYSTEM_SCAN_PROTOCOL} | ArchScope 运行协议 |
 | 工程发现最大深度 | ${registry.discoveryMaxDepth} | Git 根在该深度内被发现 |
 | 文档状态 | ${complete ? '完整' : '草稿'} | ${complete ? '源码视角系统事实已综合' : '索引、证据或校验仍有阻断项'} |
 | 证据状态 | ${sourceComplete ? '源码视角已完成，运行态待确认' : '证据不足'} | 代码图谱与安全元数据证据不替代运行态确认 |
 | 下层门禁 | ${validation.gate} | ${validation.gate === 'READY' ? '允许用户主动进入项目级分析' : '不允许进入项目级正式分析'} |
-| 校验状态 | ${validation.status} | 同时校验结构、证据覆盖、门禁与脱敏 |
-| 输出目录 | ${markdownCell(path.dirname('system/00-system-fact-base.md'))} | 相对于 Kantu 输出根目录 |
+| 校验状态 | ${validation.status} | 同时校验结构、证据覆盖、语义边界、门禁与脱敏 |
+| 输出目录 | ${markdownCell(path.dirname('system/00-system-fact-base.md'))} | 相对于 ArchScope 输出根目录 |
 
 ## 1. 当前目录性质
 
@@ -309,19 +507,17 @@ export function renderSystemFactBase(
 
 ## 2. 代码智能索引清单摘要
 
-| 工程 | Provider | 状态 | 说明 |
-|---|---|---|---|
-${indexes.records.length === 0 ? '| 当前无工程 | unavailable | PENDING | 待发现工程 |' : indexes.records.map(record => `| ${markdownCell(record.projectDir)} | ${record.provider}${record.mcpProject === undefined ? '' : ` (${markdownCell(record.mcpProject)})`} | ${record.status} | ${markdownCell(record.reason)} |`).join('\n')}
+| 状态 | 工程数 | 说明 |
+|---|---:|---|
+${indexes.records.length === 0 ? '| PENDING | 0 | 当前无工程 |' : indexStatuses.map(item => `| ${item.status} | ${item.count} | ${item.status === 'FRESH' ? '可用于源码视角证据采集' : '详见 system/index-manifest.json'} |`).join('\n')}
+
+索引与工程的一对一明细保存在 system/index-manifest.json；主文档不重复列出每个 provider 标识。
 
 ## 3. 工程清单与归属
 
 | 工程目录 | projectKey | 工程类型 | 生产状态 | 分类证据 | 可信边界 |
 |---|---|---|---|---|---|
-${registry.projects.length === 0 ? projectRows(registry.projects) : registry.projects.map(project => {
-    const record = evidence.records.find(item => item.projectKey === project.projectKey)
-    const types = record?.projectTypeCandidates[0] ?? project.projectType
-    return `| ${markdownCell(project.projectDir)} | ${markdownCell(project.projectKey)} | ${markdownCell(summarizeText(types, 140))} | ${project.productionStatus} | ${markdownCell([...project.classificationEvidence, ...(record?.evidencePaths.slice(0, 2) ?? [])].join(', '))} | 源码视角，运行态待确认 |`
-  }).join('\n')}
+${projectRows(registry.projects, evidence)}
 
 ## 4. 生产服务边界
 
@@ -329,43 +525,52 @@ ${registry.projects.length === 0 ? projectRows(registry.projects) : registry.pro
 
 ## 5. 系统入口
 
-| 工程 | 入口候选 | 证据来源 | 源码状态 | 运行态状态 |
+系统入口按用户可感知的入口形态聚合。Controller、路由、main 函数和消息消费者属于工程内部入口证据，不直接等同于系统入口，完整明细已下沉到 evidence JSON。
+
+| 入口类别 | 候选承载工程 | 工程数 | 判断依据 | 运行态状态 |
 |---|---|---|---|---|
-${evidenceRows(evidence, record => record.entries, '当前未发现稳定入口证据', 3)}
+${externalSurfaces.length === 0 ? '| 待确认 | 当前未形成用户入口候选 | 0 | 工程类型与源码入口证据不足 | 待确认 |' : externalSurfaces.map(surface => `| ${surface.name} | ${markdownCell(formatProjectList(surface.projects.map(project => project.projectDir)))} | ${surface.projects.length} | 工程类型 + ${surface.rawEvidenceCount} 条工程入口证据 | 运行态待确认 |`).join('\n')}
+
+服务端、数据任务与运维入口不计入用户入口数量；其候选边界为：${serviceSurfaces.length === 0 ? '待确认' : serviceSurfaces.map(surface => `${surface.name} ${surface.projects.length} 个工程`).join('、')}。
 
 ## 6. 基础设施事实
 
-| 工程 | 基础设施候选 | 证据来源 | 源码状态 | 运行态状态 |
-|---|---|---|---|---|
-${evidenceRows(evidence, record => record.infrastructure, '当前未发现稳定基础设施证据', 3)}
+| 基础设施类别 | 涉及工程 | 工程数 | 原始证据数 | 运行态状态 |
+|---|---|---:|---:|---|
+${infrastructureThemes.length === 0 ? '| 待确认 | 当前未形成跨工程基础设施候选 | 0 | 0 | 待确认 |' : infrastructureThemes.map(theme => `| ${theme.name} | ${markdownCell(formatProjectList(theme.projects))} | ${theme.projects.length} | ${theme.evidenceCount} | 运行态待确认 |`).join('\n')}
 
 ## 7. 入口链路概览
 
-共发现 ${entries} 条入口候选。入口到承载工程可由上表定位；后端服务、关键依赖和数据资产仅保留源码候选，不追踪接口内部调用链，实际生产链路待确认。
+| 链路阶段 | 源码视角候选 | 可信边界 |
+|---|---|---|
+| 外部用户入口 | ${externalSurfaces.length === 0 ? '待确认' : externalSurfaces.map(surface => `${surface.name}（${surface.projects.length}）`).join('、')} | 仅确认承载工程形态 |
+| 服务/API 边界 | ${serviceSurfaces.length === 0 ? '待确认' : serviceSurfaces.map(surface => `${surface.name}（${surface.projects.length}）`).join('、')} | 不把 Controller 或方法清单上卷为系统入口 |
+| 跨工程连接 | ${internalRelations.length} 条源码候选 | 名称匹配需要项目级或运行态复核 |
+| 数据与基础设施 | ${dataThemes.length} 类数据候选、${infrastructureThemes.length} 类基础设施候选 | 实例、拓扑与归属待运行态确认 |
 
 ## 8. 系统能力地图（技术视角）
 
-| 工程 | 能力候选 | 证据来源 | 源码状态 | 运行态状态 |
-|---|---|---|---|---|
-${evidenceRows(evidence, record => record.capabilityCandidates, '当前未发现稳定能力候选', 4)}
+| 能力域候选 | 相关工程 | 工程数 | 原始证据数 | 可信边界 |
+|---|---|---:|---:|---|
+${capabilityThemes.length === 0 ? '| 待确认 | 当前能力证据尚不能形成跨工程主题 | 0 | 0 | 留待项目级画像补全 |' : capabilityThemes.map(theme => `| ${theme.name} | ${markdownCell(formatProjectList(theme.projects))} | ${theme.projects.length} | ${theme.evidenceCount} | 源码主题聚合，业务边界待确认 |`).join('\n')}
 
 ## 9. 系统内部跨项目关系与调用边界
 
 | 调用方 | 被调用方候选 | 关系类型 | 源码证据 | 生产运行证据 | 待确认 |
 |---|---|---|---|---|---|
-${internalRelations.length === 0 ? '| 待确认 | 待确认 | 当前未发现 | 当前未发现稳定跨工程证据 | 待确认 | 需要项目级或运行态复核 |' : internalRelations.map(relation => `| ${markdownCell(relation.caller)} | ${markdownCell(relation.target)} | 出站依赖候选 | ${markdownCell(relation.evidence)} | 待确认 | 名称匹配仅为技术推测 |`).join('\n')}
+${internalRelations.length === 0 ? '| 待确认 | 待确认 | 当前未发现 | 当前未发现稳定跨工程证据 | 待确认 | 需要项目级或运行态复核 |' : internalRelations.slice(0, 20).map(relation => `| ${markdownCell(relation.caller)} | ${markdownCell(relation.target)} | 出站依赖名称匹配 | 完整证据见对应工程 evidence JSON | 待确认 | 名称匹配仅为技术推测 |`).join('\n')}
 
 ## 10. 外部系统与第三方依赖
 
-| 外部系统/依赖候选 | 调用方工程 | 调用方式 | 证据 | 是否生产依赖 | 待确认 |
+| 调用方工程 | 出站依赖候选数 | 系统边界判断 | 证据位置 | 是否生产依赖 | 待确认 |
 |---|---|---|---|---|---|
-${displayedExternalRelations.length === 0 ? '| 当前未发现稳定外部依赖 | 待确认 | 待确认 | 当前未发现 | 待确认 | 待确认 |' : displayedExternalRelations.map(relation => `| ${markdownCell(relation.target)} | ${markdownCell(relation.caller)} | 出站依赖候选 | ${markdownCell(relation.evidence)} | 待确认 | 需确认是否属于系统内部工程 |`).join('\n')}
+${displayedExternalCallers.length === 0 ? '| 待确认 | 0 | 当前未形成稳定外部依赖候选 | system/evidence/index.json | 待确认 | 待确认 |' : displayedExternalCallers.map(([caller, count]) => `| ${markdownCell(caller)} | ${count} | 未匹配到工作区工程，暂列系统外部或归属待确认 | system/evidence/${markdownCell(registry.projects.find(project => project.projectDir === caller)?.projectKey ?? caller)}.json | 待确认 | 需结合服务目录或运行态确认归属 |`).join('\n')}
 
 ## 11. 数据资产与归属边界
 
-| 工程 | 数据资产候选 | 证据来源 | 源码状态 | 运行态状态 |
-|---|---|---|---|---|
-${evidenceRows(evidence, record => record.dataAssets, '当前未发现稳定数据资产证据', 3)}
+| 数据资产类别 | 涉及工程 | 工程数 | 原始证据数 | 归属边界 |
+|---|---|---:|---:|---|
+${dataThemes.length === 0 ? '| 待确认 | 当前未形成稳定数据资产类别 | 0 | 0 | 待确认 |' : dataThemes.map(theme => `| ${theme.name} | ${markdownCell(formatProjectList(theme.projects))} | ${theme.projects.length} | ${theme.evidenceCount} | 写入方、读取方与生产实例待确认 |`).join('\n')}
 
 ## 12. 废弃、历史与旁支工程
 
@@ -375,20 +580,25 @@ ${evidenceRows(evidence, record => record.dataAssets, '当前未发现稳定数�
 
 | 标准名称 | 类型 | 对应工程 | 说明 |
 |---|---|---|---|
-${registry.projects.length === 0 ? '| 待确认 | 工程 | 待确认 | 尚未发现工程 |' : registry.projects.map(project => {
-    const aliases = evidence.records.find(item => item.projectKey === project.projectKey)?.aliases ?? []
-    return `| ${markdownCell(project.projectName)} | 工程 | ${markdownCell(project.projectDir)} | ${aliases.length === 0 ? '暂以仓库目录名作为展示名' : markdownCell(`别名候选：${aliases.slice(0, 3).map(alias => summarizeText(alias, 100)).join('、')}`)} |`
-  }).join('\n')}
+${aliasRecords.length === 0 ? '| 待确认 | 工程 | 待确认 | 暂以仓库目录名作为标准名称 |' : aliasRecords.map(record => `| ${markdownCell(registry.projects.find(project => project.projectKey === record.projectKey)?.projectName ?? record.projectDir)} | 工程 | ${markdownCell(record.projectDir)} | 收集到 ${record.aliases.length} 条别名候选，完整内容见 evidence JSON |`).join('\n')}
 
 ## 14. 当前可信结论
 
-已确认最大深度 ${registry.discoveryMaxDepth} 范围内的 Git 工程发现结果；${freshIndexes.length} 个独立代码智能索引可用；${collected.length} 个工程已完成只读粗粒度源码证据采集。所有生产状态仍待运行态或人工确认。
+| 可信结论 | 证据 | 可信边界 |
+|---|---|---|
+| 当前工作区是${registry.projectCount > 1 ? '多仓聚合系统' : registry.projectCount === 1 ? '单仓或单工程系统' : '尚未发现工程的工作区'}，最大深度 ${registry.discoveryMaxDepth} 内发现 ${registry.projectCount} 个 Git 工程 | 工程注册表与 Git 根发现 | 只描述扫描范围，不代表生产系统边界 |
+| 工程形态分布：${markdownCell(projectTypeDistribution(registry.projects, evidence))} | 构建标记与工程分类 | 工程类型不等于业务归属 |
+| 用户入口形态候选覆盖 ${externalEntryProjects.size} 个工程：${externalSurfaces.length === 0 ? '待确认' : externalSurfaces.map(surface => surface.name).join('、')} | 工程类型与入口证据聚合 | 实际生产入口、域名和流量待确认 |
+| 形成 ${capabilityThemes.length} 个跨工程能力主题候选：${capabilityThemes.length === 0 ? '待确认' : capabilityThemes.slice(0, 6).map(theme => theme.name).join('、')} | ${rawCapabilities} 条工程能力证据聚合 | 业务边界与能力归属待人工确认 |
+| 形成 ${internalRelations.length} 条跨工程依赖候选${relationHubs.length === 0 ? '' : `；关系中心候选为 ${relationHubs.map(([name, degree]) => `${name}（${degree}）`).join('、')}`} | 出站依赖与工作区工程名匹配 | 不是运行态调用链，需项目级或运行态复核 |
+| 共享基础设施候选包括：${infrastructureThemes.length === 0 ? '待确认' : infrastructureThemes.slice(0, 6).map(theme => theme.name).join('、')} | 工程配置与代码图谱聚合 | 实例地址、环境、拓扑和生产启用均待确认 |
+| ${freshIndexes.length}/${registry.projectCount} 个工程索引可用，${collected.length}/${registry.projectCount} 个工程完成只读取证 | index-manifest 与 evidence bundle | 表示源码覆盖，不表示生产架构已验证 |
 
 ## 15. 冲突与待复核结论
 
-共记录 ${totalConflicts} 条冲突或不确定项；主文档每个工程最多展示 3 条，其余保留在证据 JSON。
+共记录 ${totalConflicts} 条原始冲突或不确定项。主文档只展示跨工程冲突类别，具体代码、配置和实现问题全部下沉到 evidence JSON，留待项目级分析复核。
 
-${conflicts.length === 0 ? '当前证据 worker 未返回显式冲突；缺少运行态材料仍构成证据边界。' : `| 工程 | 冲突或不确定项 | 处理状态 |\n|---|---|---|\n${conflicts.map(item => `| ${markdownCell(item.project)} | ${markdownCell(summarizeText(item.item))} | 冲突待复核 |`).join('\n')}`}
+${conflictThemes.length === 0 ? '当前证据 worker 未返回显式冲突；缺少运行态材料仍构成证据边界。' : `| 冲突类别 | 涉及工程 | 原始记录数 | 处理方式 |\n|---|---|---:|---|\n${conflictThemes.map(theme => `| ${theme.name} | ${markdownCell(formatProjectList(theme.projects))} | ${theme.evidenceCount} | 下沉项目级或运行态复核 |`).join('\n')}`}
 
 ## 16. 关键待确认问题分级
 
@@ -396,8 +606,8 @@ ${conflicts.length === 0 ? '当前证据 worker 未返回显式冲突；缺少�
 |---|---|---|---|
 | ${validation.gate === 'READY' ? '当前无源码视角阻断项' : '索引、证据或契约校验尚未完整'} | 阻断项目级 | 全部工程 | 查看 validation.json 与 evidence/index.json |
 | 生产边界没有运行态证据 | 影响生产边界 | 全系统 | 提供部署清单、服务注册导出或人工确认 |
-| ${entries === 0 ? '系统入口尚未形成稳定候选' : '入口候选尚未获得生产确认'} | 影响入口链路 | 全系统 | 提供入口清单、网关配置或运行态流量证据 |
-| ${dataAssets === 0 ? '数据资产尚未形成稳定候选' : '数据资产归属尚未获得运行确认'} | 影响数据归属 | 全系统 | 提供结构证据或数据负责人确认 |
+| ${externalEntryProjects.size === 0 ? '系统入口尚未形成稳定候选' : '入口形态候选尚未获得生产确认'} | 影响入口链路 | 全系统 | 提供入口清单、网关配置或运行态流量证据 |
+| ${dataThemes.length === 0 ? '数据资产尚未形成稳定候选' : '数据资产归属尚未获得运行确认'} | 影响数据归属 | 全系统 | 提供结构证据或数据负责人确认 |
 | 工程中文名、别名和历史状态待统一 | 可延后 | 术语表 | 由系统维护者补充人工确认 |
 
 ## 17. 系统级图表索引
@@ -406,7 +616,7 @@ ${conflicts.length === 0 ? '当前证据 worker 未返回显式冲突；缺少�
 |---|---|---|
 | 系统上下文图 | system/diagrams/01-system-context.mmd | ${complete ? '源码视角已完成，运行态待确认' : '草稿，待确认'} |
 | 内部工程关系图 | system/diagrams/02-internal-relations.mmd | ${internalRelations.length > 0 ? '源码候选，运行态待确认' : '草稿，待确认'} |
-| 入口链路概览图 | system/diagrams/03-entry-overview.mmd | ${entries > 0 ? '源码候选，运行态待确认' : '草稿，待确认'} |
+| 入口链路概览图 | system/diagrams/03-entry-overview.mmd | ${externalEntryProjects.size > 0 ? '源码候选，运行态待确认' : '草稿，待确认'} |
 
 ## 18. 事实底座质量评分
 
@@ -414,10 +624,10 @@ ${conflicts.length === 0 ? '当前证据 worker 未返回显式冲突；缺少�
 |---|---:|---|---|
 | 工程覆盖 | ${coverageScore}/5 | Git 根、独立索引与工程证据覆盖 | 最大深度外目录和非 Git 工程不纳入 |
 | 生产边界可信度 | 0/5 | 无运行态材料 | 全部待确认 |
-| 入口链路可信度 | ${entryScore}/5 | ${entries} 条源码入口候选 | 生产链路待确认 |
+| 入口链路可信度 | ${entryScore}/5 | ${externalEntryProjects.size} 个用户入口承载工程，原始工程入口证据已下沉 | 生产链路待确认 |
 | 内部关系可信度 | ${relationScore}/5 | ${internalRelations.length} 条跨工程候选 | 名称匹配与生产调用待复核 |
-| 外部依赖可信度 | ${externalScore}/5 | ${externalRelations.length} 条外部或归属待确认候选，主文档展示 ${displayedExternalRelations.length} 条 | 系统内外边界待复核 |
-| 数据归属可信度 | ${dataScore}/5 | ${dataAssets} 条数据资产候选 | 写入方、读取方和归属待确认 |
+| 外部依赖可信度 | ${externalScore}/5 | ${externalRelations.length} 条外部或归属待确认候选，主文档按 ${displayedExternalCallers.length} 个调用方聚合 | 系统内外边界待复核 |
+| 数据归属可信度 | ${dataScore}/5 | ${dataThemes.length} 类数据资产候选、${rawDataAssets} 条原始证据 | 写入方、读取方和归属待确认 |
 
 ## 19. 证据覆盖率摘要
 
@@ -425,11 +635,11 @@ ${conflicts.length === 0 ? '当前证据 worker 未返回显式冲突；缺少�
 |---|---:|---:|---:|---:|---:|---:|
 | 工程 | ${registry.projectCount} | 0 | ${collected.length} | ${registry.projectCount - collected.length} | ${registry.projectCount - collected.length} | ${validation.gate === 'READY' ? 0 : 1} |
 | 生产服务 | 0 | 0 | 0 | 0 | 1 | 1 |
-| 系统入口 | ${entries} | 0 | ${entries} | 0 | ${entries === 0 ? 1 : entries} | 0 |
-| 入口链路 | ${entries} | 0 | ${entries} | 0 | ${entries === 0 ? 1 : entries} | 0 |
+| 系统入口 | ${externalEntryProjects.size} | 0 | ${externalEntryProjects.size} | 0 | ${externalEntryProjects.size === 0 ? 1 : externalEntryProjects.size} | 0 |
+| 入口链路 | ${externalSurfaces.length} | 0 | ${externalSurfaces.length} | 0 | ${externalSurfaces.length === 0 ? 1 : externalSurfaces.length} | 0 |
 | 内部关系 | ${internalRelations.length} | 0 | ${internalRelations.length} | 0 | ${internalRelations.length === 0 ? 1 : internalRelations.length} | 0 |
 | 外部依赖 | ${externalRelations.length} | 0 | ${externalRelations.length} | 0 | ${externalRelations.length === 0 ? 1 : externalRelations.length} | 0 |
-| 数据资产 | ${dataAssets} | 0 | ${dataAssets} | 0 | ${dataAssets === 0 ? 1 : dataAssets} | 0 |
+| 数据资产 | ${rawDataAssets} | 0 | ${rawDataAssets} | 0 | ${rawDataAssets === 0 ? 1 : rawDataAssets} | 0 |
 
 ## 20. 系统级产物自检
 
@@ -443,7 +653,7 @@ ${conflicts.length === 0 ? '当前证据 worker 未返回显式冲突；缺少�
 | 证据仲裁已执行 | 通过 | 优先级：运行态、人工确认、部署发布、代码图谱、源码、历史文档；冲突保留为冲突待复核 |
 | 敏感信息已脱敏 | ${redactionPassed ? '通过' : '不通过'} | ${redactionPassed ? '未检测到账号、凭据、私钥或完整敏感端点' : '检测到疑似敏感值，详见 validation.json'} |
 | 源码存在与生产启用已区分 | 通过 | 未生成生产启用断言 |
-| 系统级边界未越界 | 通过 | 不含项目内部调用链、业务流程、代码热点或改造建议 |
+| 系统级边界未越界 | ${semanticBoundaryPassed ? '通过' : '不通过'} | 主文档只保留入口形态、跨工程主题、关系摘要与冲突类别；工程细节下沉 evidence JSON |
 | 项目级门禁 | ${validation.gate === 'READY' ? '放行' : '阻断'} | ${validation.gate === 'READY' ? '源码视角系统事实已完成；仍需用户主动触发' : '索引、证据或校验存在阻断项'} |
 
 ## 21. 后续分析任务拆分
@@ -451,35 +661,82 @@ ${conflicts.length === 0 ? '当前证据 worker 未返回显式冲突；缺少�
 | 分析对象 | 层级 | 工程类型 | 建议优先级 | 优先原因 | 是否可并行 | 前置依赖 | 输出文档 |
 |---|---|---|---|---|---|---|---|
 ${registry.projects.length === 0 ? '| 待确认 | 项目级 | unknown | 待确认 | 未发现工程 | 否 | 系统级门禁 | 待确认 |' : registry.projects.map(project => {
-    const record = evidence.records.find(item => item.projectKey === project.projectKey)
-    const priority = (record?.entries.length ?? 0) > 0 ? '高' : '中'
-    return `| ${markdownCell(project.projectDir)} | 项目级 | ${project.projectType} | ${priority} | ${(record?.entries.length ?? 0) > 0 ? '存在入口候选' : '补全工程画像与运行边界'} | 是 | 系统级门禁 READY | projects/${markdownCell(project.projectKey)} |`
+    const priority = highPriority.has(project.projectKey) ? '高' : SERVER_PROJECT_TYPES.has(effectiveProjectType(project, recordsByKey.get(project.projectKey))) ? '中' : '低'
+    const reason = externalEntryProjects.has(project.projectKey) ? '用户入口承载工程' : relationDegree.has(project.projectDir) ? '跨工程关系候选参与方' : '补全工程画像与运行边界'
+    return `| ${markdownCell(project.projectDir)} | 项目级 | ${project.projectType} | ${priority} | ${reason} | 是 | 系统级门禁 READY | projects/${markdownCell(project.projectKey)} |`
   }).join('\n')}
 `
 }
 
 export function renderSystemContextDiagram(projects: ProjectRecord[], evidence?: SystemEvidenceBundle): string {
-  const nodes = projects.map((project, index) => `  P${index}["${mermaidLabel(project.projectDir)}"]`).join('\n')
-  const entryCount = evidence?.records.reduce((count, record) => count + record.entries.length, 0) ?? 0
-  return `flowchart LR\n  U["用户 / 外部入口：${entryCount > 0 ? `${entryCount} 个源码候选` : '待确认'}"]\n  S["Kantu 扫描范围"]\n  U -. 运行态待确认 .-> S\n${nodes || '  P0["当前未发现 Git 工程"]'}\n${projects.map((_project, index) => `  S --> P${index}`).join('\n')}\n`
+  const bundle = evidence ?? { protocolVersion: SYSTEM_SCAN_PROTOCOL, generatedAt: '', records: [] }
+  const surfaces = entrySurfaces({ projects }, bundle)
+  const external = surfaces.filter(surface => surface.external)
+  const serviceCount = surfaces.filter(surface => !surface.external).reduce((count, surface) => count + surface.projects.length, 0)
+  const capabilities = aggregateThemes(bundle, record => record.capabilityCandidates, CAPABILITY_THEMES)
+  const infrastructure = aggregateThemes(bundle, record => record.infrastructure, INFRASTRUCTURE_THEMES)
+  const entryNodes = external.length === 0
+    ? '    E0["外部入口：待确认"]'
+    : external.map((surface, index) => `    E${index}["${mermaidLabel(surface.name)}<br/>${mermaidLabel(formatProjectList(surface.projects.map(project => project.projectDir), 5))}"]`).join('\n')
+  const entryEdges = external.length === 0
+    ? '  U -. 运行态待确认 .-> E0\n  E0 -. 源码候选 .-> S'
+    : external.map((_surface, index) => `  U -. 运行态待确认 .-> E${index}\n  E${index} -. 源码候选 .-> S`).join('\n')
+  return `flowchart LR
+  U["用户 / 外部系统"]
+  subgraph K["源码视角系统边界 · ${projects.length} 个工程"]
+${entryNodes}
+    S["服务 / API 边界候选<br/>${serviceCount} 个工程"]
+    C["跨工程能力主题<br/>${capabilities.length} 类"]
+  end
+  I["共享基础设施候选<br/>${infrastructure.slice(0, 5).map(theme => mermaidLabel(theme.name)).join(' / ') || '待确认'}"]
+${entryEdges}
+  S -. 源码聚合 .-> C
+  S -. 运行态待确认 .-> I
+`
 }
 
 export function renderInternalRelationsDiagram(projects: ProjectRecord[], evidence?: SystemEvidenceBundle): string {
-  const nodes = projects.map((project, index) => `  P${index}["${mermaidLabel(project.projectDir)}"]`).join('\n')
-  const projectIndex = new Map(projects.map((project, index) => [project.projectDir, index]))
-  const edges = evidence === undefined ? [] : dependencyRelations({ projects }, evidence)
+  const relations = evidence === undefined ? [] : dependencyRelations({ projects }, evidence)
     .filter(relation => relation.internal)
-    .flatMap(relation => {
-      const caller = projectIndex.get(relation.caller)
-      const target = projectIndex.get(relation.target)
-      return caller === undefined || target === undefined ? [] : [`  P${caller} -. 源码候选 .-> P${target}`]
-    })
-  return `flowchart LR\n${nodes || '  P0["当前未发现 Git 工程"]'}\n${edges.length === 0 ? '  N["工程间关系：当前未发现稳定候选"]' : edges.join('\n')}\n`
+    .slice(0, 24)
+  const involved = new Set(relations.flatMap(relation => [relation.caller, relation.target]))
+  const displayedProjects = projects.filter(project => involved.has(project.projectDir))
+  const projectIndex = new Map(displayedProjects.map((project, index) => [project.projectDir, index]))
+  const nodes = displayedProjects.map((project, index) => `  P${index}["${mermaidLabel(project.projectDir)}"]`).join('\n')
+  const edges = relations.flatMap(relation => {
+    const caller = projectIndex.get(relation.caller)
+    const target = projectIndex.get(relation.target)
+    return caller === undefined || target === undefined ? [] : [`  P${caller} -. 出站依赖名称匹配 .-> P${target}`]
+  })
+  return `flowchart LR
+${nodes || '  N["工程间关系：当前未发现稳定候选"]'}
+${edges.join('\n')}
+  B["仅为源码候选 · 运行态待确认"]
+`
 }
 
 export function renderEntryOverviewDiagram(projects: ProjectRecord[], evidence?: SystemEvidenceBundle): string {
-  const entryCount = evidence?.records.reduce((count, record) => count + record.entries.length, 0) ?? 0
-  return `flowchart LR\n  E["系统入口：${entryCount > 0 ? `${entryCount} 个源码候选` : '待确认'}"]\n  W["承载工程：${projects.length === 0 ? '待确认' : '见工程注册表'}"]\n  B["后端 / 网关 / 数据资产：运行态待确认"]\n  E -. 源码候选 .-> W\n  W -. 待确认 .-> B\n`
+  const bundle = evidence ?? { protocolVersion: SYSTEM_SCAN_PROTOCOL, generatedAt: '', records: [] }
+  const surfaces = entrySurfaces({ projects }, bundle)
+  const external = surfaces.filter(surface => surface.external)
+  const services = surfaces.filter(surface => !surface.external)
+  const dataThemes = aggregateThemes(bundle, record => record.dataAssets, DATA_THEMES)
+  const entryNodes = external.length === 0
+    ? '  E0["用户入口形态：待确认"]'
+    : external.map((surface, index) => `  E${index}["${mermaidLabel(surface.name)}<br/>${surface.projects.length} 个承载工程"]`).join('\n')
+  const entryEdges = external.length === 0
+    ? '  U -. 待确认 .-> E0\n  E0 -. 源码候选 .-> S'
+    : external.map((_surface, index) => `  U --> E${index}\n  E${index} -. 源码候选 .-> S`).join('\n')
+  return `flowchart LR
+  U["用户 / 外部系统"]
+${entryNodes}
+  S["服务与 API 边界<br/>${services.reduce((count, surface) => count + surface.projects.length, 0)} 个工程候选"]
+  D["数据资产<br/>${dataThemes.length} 类源码候选"]
+  R["注册中心 / 网关 / 部署拓扑<br/>运行态待确认"]
+${entryEdges}
+  S -. 源码候选 .-> D
+  S -. 待确认 .-> R
+`
 }
 
 export interface WriteSystemArtifactsOptions {

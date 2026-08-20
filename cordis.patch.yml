@@ -1,5 +1,5 @@
 - insert:
-    - id: kantu-codebase-memory
+    - id: archscope-codebase-memory
       name: '@deepseek-ai/dsh-mcp-client'
       config:
         serverName: codebase_memory_mcp
@@ -7,9 +7,10 @@
         command: codebase-memory-mcp
         toolCallTimeoutMs: 600000
         failOnStartupError: false
-    - id: kantu
-      name: dsh-kantu
+    - id: archscope
+      name: dsh-archscope
       config:
+        # Kept for compatibility with pre-rename scan artifacts; configurable per installation.
         outputDirectory: kantu_docs
         discoveryMaxDepth: 3
         codebaseMemoryServerName: codebase_memory_mcp
@@ -19,3 +20,4 @@
         registerCommand: true
         registerSystemScanTool: true
         registerStatusTool: true
+        registerLegacyAliases: true

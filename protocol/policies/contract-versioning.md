@@ -1,6 +1,6 @@
 # Contract versioning
 
-Machine-readable contracts are the source of truth for Kantu protocol fields, state values, heading order, required artifacts, and deterministic validation.
+Machine-readable contracts are the source of truth for ArchScope protocol fields, state values, heading order, required artifacts, and deterministic validation.
 
 - Patch releases clarify wording without changing accepted documents.
 - Minor releases add backward-compatible fields or states.

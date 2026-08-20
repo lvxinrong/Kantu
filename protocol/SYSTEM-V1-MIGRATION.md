@@ -2,7 +2,7 @@
 
 The system-level assets that previously existed as documentation and helper-script conventions are now first-class plugin resources:
 
-| Previous asset role | Kantu v1 destination | Runtime treatment |
+| Previous asset role | ArchScope v1 destination | Runtime treatment |
 |---|---|---|
 | State and document conventions | `protocol/contracts/` | Loaded and enforced by TypeScript validators |
 | Analysis and safety guidance | `protocol/policies/` | Versioned, packaged, and available to model tasks |

@@ -15,6 +15,14 @@ interface SystemDocumentContract {
   requiredEvidenceSourceTypes: string[]
   qualityDimensions: string[]
   evidenceCoverageObjects: string[]
+  boundaryRules: {
+    maxDocumentCharacters: number
+    requiredDetailPointer: string
+    detailSensitiveSections: string[]
+    maxTableRowsBySection: Record<string, number>
+    forbiddenDetailPatterns: Array<{ id: string, source: string, flags: string }>
+    minTrustedConclusionRows: number
+  }
 }
 
 interface EvidenceContract {
@@ -40,6 +48,21 @@ export function metadataValues(content: string, keys: string[]): Record<string, 
     const match = new RegExp(`^\\|\\s*${escaped}\\s*\\|\\s*([^|]*?)\\s*\\|`, 'mu').exec(content)
     return [key, match?.[1]?.trim()]
   }))
+}
+
+function markdownSection(content: string, heading: string): string {
+  const start = content.indexOf(heading)
+  if (start < 0) return ''
+  const bodyStart = start + heading.length
+  const remainder = content.slice(bodyStart)
+  const nextHeading = /\n## /u.exec(remainder)
+  return nextHeading === null ? remainder : remainder.slice(0, nextHeading.index)
+}
+
+function markdownTableDataRows(section: string): number {
+  const rows = section.split(/\r?\n/gu).filter(line => /^\|/u.test(line.trim()))
+    .filter(line => !/^\|(?:\s*:?-+:?\s*\|)+\s*$/u.test(line.trim()))
+  return Math.max(0, rows.length - 1)
 }
 
 export function validateSystemDocument(
@@ -83,6 +106,39 @@ export function validateSystemDocument(
     if (actualHeadings.some(heading => heading.includes(pattern))) {
       issues.push({ severity: 'ERROR', code: 'SYSTEM_BOUNDARY_EXCEEDED', message: `System report contains a forbidden deep-dive heading: ${pattern}.` })
     }
+  }
+  if (content.length > contract.boundaryRules.maxDocumentCharacters) {
+    issues.push({
+      severity: 'ERROR',
+      code: 'SYSTEM_DOCUMENT_TOO_LARGE',
+      message: `System report exceeds ${contract.boundaryRules.maxDocumentCharacters} characters; project details must move to evidence artifacts.`,
+    })
+  }
+  if (!content.includes(contract.boundaryRules.requiredDetailPointer)) {
+    issues.push({ severity: 'ERROR', code: 'SYSTEM_DETAIL_POINTER_MISSING', message: 'System report must point readers to the raw evidence bundle.' })
+  }
+  for (const [heading, maxRows] of Object.entries(contract.boundaryRules.maxTableRowsBySection)) {
+    const rows = markdownTableDataRows(markdownSection(content, heading))
+    if (rows > maxRows) {
+      issues.push({ severity: 'ERROR', code: 'SYSTEM_SECTION_TOO_DETAILED', message: `${heading} contains ${rows} data rows; maximum is ${maxRows}.` })
+    }
+  }
+  const detailPatterns = contract.boundaryRules.forbiddenDetailPatterns.map(item => ({ id: item.id, regex: new RegExp(item.source, item.flags) }))
+  for (const heading of contract.boundaryRules.detailSensitiveSections) {
+    const section = markdownSection(content, heading)
+    for (const pattern of detailPatterns) {
+      if (pattern.regex.test(section)) {
+        issues.push({ severity: 'ERROR', code: 'SYSTEM_BOUNDARY_EXCEEDED', message: `${pattern.id} leaked project-level detail into ${heading}.` })
+      }
+    }
+  }
+  const trustedConclusionRows = markdownTableDataRows(markdownSection(content, '## 14. 当前可信结论'))
+  if (trustedConclusionRows < contract.boundaryRules.minTrustedConclusionRows) {
+    issues.push({
+      severity: 'ERROR',
+      code: 'SYSTEM_WORLDVIEW_INCOMPLETE',
+      message: `Trustworthy conclusions contain ${trustedConclusionRows} rows; at least ${contract.boundaryRules.minTrustedConclusionRows} cross-project conclusions are required.`,
+    })
   }
   for (const questionClass of contract.requiredQuestionClasses) {
     if (!content.includes(`| ${questionClass} |`)) {

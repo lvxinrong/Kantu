@@ -210,7 +210,7 @@ export class DshSystemAnalyzer implements SystemAnalyzer {
     const tools = this.tools()
     if (tools === undefined) throw new Error('DSH tools service is unavailable.')
     const result = await tools.execute({
-      callId: CallId(`kantu-${Date.now()}-${this.callSequence += 1}`),
+      callId: CallId(`archscope-${Date.now()}-${this.callSequence += 1}`),
       name,
       arguments: args,
       signal: options.signal ?? new AbortController().signal,
@@ -385,13 +385,13 @@ export class DshSystemAnalyzer implements SystemAnalyzer {
           omittedFiles: 0,
           boundary: 'PROJECT_ROOT_ONLY' as const,
         }))
-        const prompt = `你是 Kantu 系统级只读证据 worker。只分析一个工程，不建立全局结论，不写文件，不判断生产启用。\n\n工程键：${project.projectKey}\n工程相对路径：${project.projectDir}\n工程绝对路径：${projectRoot}\n唯一允许使用的 codebase-memory project：${index.mcpProject}\n\nKantu 已通过 get_architecture 获取代码图谱基线，并在父进程中通过工程根目录边界检查、符号链接拒绝、大小限制和敏感值脱敏，确定性采集了配置/文档元数据。你仍需按需调用允许的 codebase-memory 只读工具补充代码证据，不得读取或查询其他 MCP project。\n\n代码图谱基线：\n${architectureBaseline}\n\n安全元数据基线：\n${JSON.stringify(metadataBaseline)}\n\n从架构、入口、路由、依赖、数据访问、部署配置和基础设施角度采集粗粒度证据。代码定义和调用关系以 codebase-memory 为准；manifest、README、CI、容器和部署配置可引用安全元数据基线。每条结论都附源码相对路径或图谱对象；完整 URL、IP、账号、密钥、token、JDBC 地址必须脱敏。\n\n返回结构化结果：工程类型候选、启动/用户入口、出站依赖、数据资产、基础设施、别名/服务名、能力候选、证据路径、冲突与不确定项，以及 scopeStatus 和 scopeViolations。没有证据时返回空数组，不要猜测。未发生真实越界时必须返回 scopeStatus=CLEAN 且 scopeViolations=[]；禁止在 scopeViolations 中填写“无违规”或工具使用说明。`
+        const prompt = `你是 ArchScope 系统级只读证据 worker。只分析一个工程，不建立全局结论，不写文件，不判断生产启用。\n\n工程键：${project.projectKey}\n工程相对路径：${project.projectDir}\n工程绝对路径：${projectRoot}\n唯一允许使用的 codebase-memory project：${index.mcpProject}\n\nArchScope 已通过 get_architecture 获取代码图谱基线，并在父进程中通过工程根目录边界检查、符号链接拒绝、大小限制和敏感值脱敏，确定性采集了配置/文档元数据。你仍需按需调用允许的 codebase-memory 只读工具补充代码证据，不得读取或查询其他 MCP project。\n\n代码图谱基线：\n${architectureBaseline}\n\n安全元数据基线：\n${JSON.stringify(metadataBaseline)}\n\n从架构、入口、路由、依赖、数据访问、部署配置和基础设施角度采集粗粒度证据。代码定义和调用关系以 codebase-memory 为准；manifest、README、CI、容器和部署配置可引用安全元数据基线。每条结论都附源码相对路径或图谱对象；完整 URL、IP、账号、密钥、token、JDBC 地址必须脱敏。\n\n返回结构化结果：工程类型候选、启动/用户入口、出站依赖、数据资产、基础设施、别名/服务名、能力候选、证据路径、冲突与不确定项，以及 scopeStatus 和 scopeViolations。没有证据时返回空数组，不要猜测。未发生真实越界时必须返回 scopeStatus=CLEAN 且 scopeViolations=[]；禁止在 scopeViolations 中填写“无违规”或工具使用说明。`
         run = await service.start(this.evidenceProvider, {
-          label: `kantu-system-evidence:${project.projectKey}`,
+          label: `archscope-system-evidence:${project.projectKey}`,
           prompt: [{ type: 'text', text: prompt }],
           parent: options.agent,
           signal: options.signal ?? new AbortController().signal,
-          persona: `你是 Kantu 的单工程系统证据采集器。你只能使用请求中列出的 codebase-memory 工具；不存在 Glob、Inspect、OUT、Read、Bash 或 shell 工具，不得尝试调用它们。代码定义、调用关系和路由优先使用 search_graph、trace_path、get_code_snippet；非代码文本搜索使用 search_code。严格使用提示中唯一授权的 MCP project。`,
+          persona: `你是 ArchScope 的单工程系统证据采集器。你只能使用请求中列出的 codebase-memory 工具；不存在 Glob、Inspect、OUT、Read、Bash 或 shell 工具，不得尝试调用它们。代码定义、调用关系和路由优先使用 search_graph、trace_path、get_code_snippet；非代码文本搜索使用 search_code。严格使用提示中唯一授权的 MCP project。`,
           outputSchema: EVIDENCE_OUTPUT_SCHEMA,
           maxDepth: 1,
           toolFilter: { allow: readTools },

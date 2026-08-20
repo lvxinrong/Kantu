@@ -1,7 +1,7 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 import type { SystemScanResult } from '../contracts/system-scan.js'
-import type { KantuService } from '../service.js'
+import type { ArchScopeService } from '../service.js'
 
 export function createSystemScanMessage(result: SystemScanResult): string {
   const scanOutcome = result.status === 'FAILED' ? 'failed' : result.reused ? 'results reused' : 'completed'
@@ -13,7 +13,7 @@ export function createSystemScanMessage(result: SystemScanResult): string {
     ? 'completed at source level; runtime evidence pending'
     : 'awaiting source evidence'
   return [
-    `Kantu system scan ${scanOutcome} · ${result.projectCount} projects · system analysis ${analysisOutcome}.`,
+    `ArchScope system scan ${scanOutcome} · ${result.projectCount} projects · system analysis ${analysisOutcome}.`,
     `Fresh indexes ${result.indexedProjectCount}/${result.projectCount} · collected evidence ${result.evidenceProjectCount}/${result.projectCount} · scope violations ${result.scopeViolationCount}.`,
     `System artifact validation ${result.validation} · project-scan gate ${result.gate}.`,
     `Artifacts: ${result.outputDirectory}/system/00-system-fact-base.md`,
@@ -21,10 +21,13 @@ export function createSystemScanMessage(result: SystemScanResult): string {
   ].join('\n')
 }
 
-export function createSystemScanTool(service: KantuService) {
+export function createSystemScanTool(
+  service: ArchScopeService,
+  name: 'archscope_scan_system' | 'kantu_scan_system' = 'archscope_scan_system',
+) {
   return defineTool({
-    name: 'kantu_scan_system',
-    description: 'Run the full source-level system scan: discover Git projects, prepare independent code indexes, collect isolated evidence, synthesize the system fact base, and validate the downstream gate. This never claims runtime or production facts without evidence.',
+    name,
+    description: `${name.startsWith('kantu_') ? '[Deprecated alias] ' : ''}Run the full ArchScope source-level system scan: discover Git projects, prepare independent code indexes, collect isolated evidence, synthesize the system fact base, and validate the downstream gate. This never claims runtime or production facts without evidence.`,
     parameters: {
       refresh: { type: 'boolean', description: 'Create a fresh run instead of reusing the latest reusable system scan.' },
     },

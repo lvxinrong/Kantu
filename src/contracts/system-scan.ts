@@ -169,7 +169,7 @@ export interface SystemScanResult {
   reused: boolean
 }
 
-export interface KantuStatusResult {
+export interface ArchScopeStatusResult {
   found: boolean
   runId: string
   status: SystemScanStatus | 'NOT_FOUND'
@@ -181,3 +181,6 @@ export interface KantuStatusResult {
   scopeViolationCount: number
   outputDirectory: string
 }
+
+/** @deprecated Use ArchScopeStatusResult. */
+export type KantuStatusResult = ArchScopeStatusResult

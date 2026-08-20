@@ -1,6 +1,6 @@
 # System output validation
 
-Before a system report can be used by a downstream layer, Kantu validates:
+Before a system report can be used by a downstream layer, ArchScope validates:
 
 - the exact heading set and order;
 - recognized metadata values and gate consistency;

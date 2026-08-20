@@ -44,6 +44,7 @@ const EXCLUDED_DIRECTORIES = new Set([
   'coverage',
   'dist',
   'kantu_docs',
+  'archscope_docs',
   'node_modules',
   'target',
   'vendor',

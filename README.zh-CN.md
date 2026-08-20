@@ -1,20 +1,22 @@
-# Kantu（勘图）
+# ArchScope
 
 [English](./README.md) | **简体中文**
 
 > 面向复杂、多仓软件系统的证据驱动架构勘探引擎——为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 而生。
 
-Kantu 希望帮助 AI Agent 真正接手一个陌生软件系统，而不只是浏览目录、统计文件或生成一篇看似完整的架构总结。
+**先看清系统，再修改代码。**
+
+ArchScope 希望帮助 AI Agent 真正接手一个陌生软件系统，而不只是浏览目录、统计文件或生成一篇看似完整的架构总结。
 
 它把源码发现、证据采集、系统建模、项目画像、层级门禁、并行编排、结果校验和架构门户组织成一套可恢复、可验证、可扩展的扫描协议，并以 DeepSeek Harness 插件的形式提供这些能力。
 
-**项目状态：系统级源码扫描闭环已可运行，尚未正式发布。** Kantu 现在可以发现 Git 工程，为每个工程建立或复用独立的 codebase-memory 索引，启动隔离的只读证据 worker，由确定性单写者综合 22 章节系统事实底座，并对机器产物与 Markdown 执行门禁校验。运行态证据、项目级扫描和恢复编排仍在开发中。
+**项目状态：系统级源码扫描闭环已可运行，尚未正式发布。** ArchScope 现在可以发现 Git 工程，为每个工程建立或复用独立的 codebase-memory 索引，启动隔离的只读证据 worker，由确定性单写者综合 22 章节系统事实底座，并对机器产物与 Markdown 执行门禁校验。运行态证据、项目级扫描和恢复编排仍在开发中。
 
 > **核心模型：系统级定世界观，项目级定工程画像，模块级定职责边界，代码级定执行链路。**
 
 模块分析横向梳理能力与职责，代码分析纵向追踪真实执行路径。
 
-## 为什么需要 Kantu
+## 为什么需要 ArchScope
 
 当一个 Agent 第一次进入大型代码库时，最容易得到的是“局部正确、整体失真”的答案：
 
@@ -25,11 +27,11 @@ Kantu 希望帮助 AI Agent 真正接手一个陌生软件系统，而不只是�
 - 并行派发多个任务，却缺少统一事实底座和冲突仲裁；
 - 一次会话中断后，无法判断已经完成了什么、哪些结果仍然可信。
 
-Kantu 的出发点是：
+ArchScope 的出发点是：
 
 > 架构理解不是一次性的代码摘要，而是一条从证据到结论、从局部到整体、可以校验和恢复的工程流程。
 
-## Kantu 有什么不同
+## ArchScope 有什么不同
 
 ### 证据优先，而不是结论优先
 
@@ -37,7 +39,7 @@ Kantu 的出发点是：
 
 ### 先建立系统世界观，再分析单个项目
 
-Kantu 不会让多个 Agent 在没有共同语境的情况下各自解释系统。系统级事实底座先统一生产边界、工程身份、基础设施、入口和术语，项目级分析再继承这些事实。
+ArchScope 不会让多个 Agent 在没有共同语境的情况下各自解释系统。系统级事实底座先统一生产边界、工程身份、基础设施、入口和术语，项目级分析再继承这些事实。
 
 ### 模型负责推理，程序负责纪律
 
@@ -49,11 +51,11 @@ Kantu 不会让多个 Agent 在没有共同语境的情况下各自解释系统�
 
 ### 原生融入插件运行时
 
-Kantu 不是把一份长提示词套进 npm 包。它计划以 Cordis 服务、模型工具、能力 Provider 和 Harness bundle 的方式接入 DeepSeek Harness，让扫描能力可以被组合、替换、热更新和复用。
+ArchScope 不是把一份长提示词套进 npm 包。它计划以 Cordis 服务、模型工具、能力 Provider 和 Harness bundle 的方式接入 DeepSeek Harness，让扫描能力可以被组合、替换、热更新和复用。
 
 ## 分析模型
 
-Kantu 使用分层模型控制分析顺序和结论边界：
+ArchScope 使用分层模型控制分析顺序和结论边界：
 
 | 层级 | 回答的问题 | 主要产物 |
 |---|---|---|
@@ -103,7 +105,7 @@ flowchart LR
 
 ## 当前 MVP 使用体验
 
-Kantu 计划让用户通过 Harness 工具用自然语言表达目标。当前已经提供 `kantu_scan_system` 与 `kantu_status` 两个模型工具；更深层的分析能力会继续复用同一个服务边界。
+ArchScope 计划让用户通过 Harness 工具用自然语言表达目标。当前已经提供 `archscope_scan_system` 与 `archscope_status` 两个模型工具；更深层的分析能力会继续复用同一个服务边界。
 
 ```text
 为这个工作区建立系统级事实底座。
@@ -118,14 +120,16 @@ Kantu 计划让用户通过 Harness 工具用自然语言表达目标。当前�
 需要确定性控制或脚本化调用时，同一组意图使用统一、严格的命令命名空间：
 
 ```text
-/kantu system [--refresh]
-/kantu project <project-key> [--refresh]
-/kantu status [run-id]
-/kantu resume [run-id]
-/kantu help
+/archscope system [--refresh]
+/archscope project <project-key> [--refresh]
+/archscope status [run-id]
+/archscope resume [run-id]
+/archscope help
 ```
 
 命令同时接受中文子命令别名。Slash command 使用严格解析，不猜测错误输入；参数不合法时只返回用法说明。`system` 会依次完成工程发现、独立索引、逐工程证据采集、事实底座综合和确定性校验，并在主对话中汇报阶段与四分位进度。首次扫描或 `--refresh` 可能耗时较长；普通扫描会按工程绝对根路径复用已有索引。已完成且协议版本一致的运行可以直接复用，`BLOCKED` 运行会在下次执行时重新尝试，而不是永久缓存失败。
+
+品牌迁移期间，`/kantu` 会作为 `/archscope` 的废弃兼容别名继续工作；旧模型工具 `kantu_scan_system` 与 `kantu_status` 默认也会注册，可以通过 `registerLegacyAliases: false` 关闭。所有新接入都应只使用 ArchScope 命名。
 
 源码视角的索引和证据全部完成后，系统门禁可以进入 `READY`；这仍不等于生产拓扑已得到确认。缺失 MCP 工具、索引失败、worker 失败或越界读取都会让门禁保持 `BLOCKED`。`system`、`status` 和 `help` 已可执行；`project` 与 `resume` 已保留命令契约，在对应执行流程完成前保持失败关闭。
 
@@ -147,7 +151,7 @@ validate artifacts
 
 ## 当前系统级扫描产物
 
-Kantu 默认只在独立输出目录中写入分析产物，不修改业务代码：
+ArchScope 默认只在独立输出目录中写入分析产物，不修改业务代码：
 
 ```text
 kantu_docs/
@@ -170,15 +174,15 @@ kantu_docs/
 │       └── state.json
 ```
 
-每个工程的原始结构化证据先写入独立文件，系统事实底座只由单一写者综合，避免并行 worker 互相污染或竞争写文档。主文档只保留建立系统世界观所需的代表性事实，完整入口、依赖、数据资产与冲突仍保留在逐工程证据 JSON 中。源码证据齐备时文档可以标记为“完整（源码视角）”并打开项目级门禁；运行态事实仍会明确标记为待确认，综合校验通过也不等于生产架构已经得到证明。
+每个工程的原始结构化证据先写入独立文件，系统事实底座只由单一写者综合，避免并行 worker 互相污染或竞争写文档。主文档会把证据聚合为用户入口形态、跨工程能力与基础设施主题、关系摘要、数据类别和冲突类别；具体路由、代码符号、配置与实现细节仍保留在逐工程证据 JSON 中。确定性的语义边界校验会限制关键章节规模，并拒绝泄漏到主文档中的路由或实现细节。源码证据齐备时文档可以标记为“完整（源码视角）”并打开项目级门禁；运行态事实仍会明确标记为待确认，综合校验通过也不等于生产架构已经得到证明。
 
-代码定义、路由和调用关系优先由 codebase-memory 提供。对于图谱容易遗漏的 manifest、README、CI、容器和部署配置，Kantu 会在父进程中执行工程根目录约束、符号链接拒绝、文件与总量限制以及敏感值脱敏，再把安全元数据基线交给证据 worker。worker 不会获得任意文件读取、shell 或写入能力。
+代码定义、路由和调用关系优先由 codebase-memory 提供。对于图谱容易遗漏的 manifest、README、CI、容器和部署配置，ArchScope 会在父进程中执行工程根目录约束、符号链接拒绝、文件与总量限制以及敏感值脱敏，再把安全元数据基线交给证据 worker。worker 不会获得任意文件读取、shell 或写入能力。
 
 ### 系统级 Protocol Pack
 
-Kantu 将系统级分析知识作为版本化的 `protocol/` 目录随插件发布，而不是把所有规则隐藏在一个超长 Prompt 里。协议包包含证据、工程身份、索引状态、22 章节系统文档与层级门禁的机器契约；包含分析边界、脱敏、输出路径和校验策略；也包含系统单写者与只读证据任务各自需要的聚焦提示。
+ArchScope 将系统级分析知识作为版本化的 `protocol/` 目录随插件发布，而不是把所有规则隐藏在一个超长 Prompt 里。协议包包含证据、工程身份、索引状态、22 章节系统文档与层级门禁的机器契约；包含分析边界、脱敏、输出路径和校验策略；也包含系统单写者与只读证据任务各自需要的聚焦提示。
 
-插件会在运行时加载并校验这份目录。每次扫描都会生成 `system/protocol-lock.json`，记录协议包版本、manifest 以及每个资源的 SHA-256 摘要。协议包发生变化后，Kantu 会创建新运行，不会静默复用旧规则下的结果。适合程序执行的约束已经迁入 TypeScript 并由测试守护；Markdown 是可审阅的协议正文，而不是无人执行的附件。
+插件会在运行时加载并校验这份目录。每次扫描都会生成 `system/protocol-lock.json`，记录协议包版本、manifest 以及每个资源的 SHA-256 摘要。协议包发生变化后，ArchScope 会创建新运行，不会静默复用旧规则下的结果。适合程序执行的约束已经迁入 TypeScript 并由测试守护；Markdown 是可审阅的协议正文，而不是无人执行的附件。
 
 ### 配置
 
@@ -191,31 +195,36 @@ Kantu 将系统级分析知识作为版本化的 `protocol/` 目录随插件发�
 | `indexMode` | `moderate` | 新建或刷新索引时使用的 `fast` / `moderate` / `full` 模式 |
 | `evidenceProvider` | `spawn` | 用于逐工程只读证据任务的 DSH subagent provider |
 | `systemConcurrency` | `4` | 索引和证据任务的最大并发数 |
-| `registerCommand` | `true` | 注册可选的 `/kantu` 命令 |
-| `registerSystemScanTool` | `true` | 注册 `kantu_scan_system` |
-| `registerStatusTool` | `true` | 注册 `kantu_status` |
+| `registerCommand` | `true` | 注册可选的 `/archscope` 命令 |
+| `registerSystemScanTool` | `true` | 注册 `archscope_scan_system` |
+| `registerStatusTool` | `true` | 注册 `archscope_status` |
+| `registerLegacyAliases` | `true` | 临时注册已废弃的 `/kantu` 与 `kantu_*` 兼容别名 |
 
-Kantu bundle 会同时挂载 DeepSeek Harness 官方 `@deepseek-ai/dsh-mcp-client`，并通过 stdio 启动 `codebase-memory-mcp`。因此运行前需要确保该可执行文件在启动 DSH 的 `PATH` 中：
+默认产物目录 `kantu_docs/` 与 `kantu/.../v1` 协议标识会作为历史扫描数据的兼容标识暂时保留，它们不再代表产品品牌。未来只有在协议大版本升级并提供明确数据迁移路径时，才会更换这些持久化标识。
+
+规范命名与兼容边界记录在 [`docs/brand.md`](./docs/brand.md)。
+
+ArchScope bundle 会同时挂载 DeepSeek Harness 官方 `@deepseek-ai/dsh-mcp-client`，并通过 stdio 启动 `codebase-memory-mcp`。因此运行前需要确保该可执行文件在启动 DSH 的 `PATH` 中：
 
 ```bash
 command -v codebase-memory-mcp
 ```
 
-安装插件后，可用下面的命令确认 MCP 与 Kantu 两个配置层都已出现：
+安装插件后，可用下面的命令确认 MCP 与 ArchScope 两个配置层都已出现：
 
 ```bash
-dsh --profile web --dump-config | rg -n -C 6 "kantu-codebase-memory|codebase_memory_mcp|dsh-kantu"
+dsh --profile web --dump-config | rg -n -C 6 "archscope-codebase-memory|codebase_memory_mcp|dsh-archscope"
 ```
 
-本地开发可执行 `pnpm install`，随后运行 `pnpm check`。Kantu 目前尚未发布到 npm，公开安装命令会随首个版本一并提供。
+本地开发可执行 `pnpm install`，随后运行 `pnpm check`。ArchScope 目前尚未发布到 npm，公开安装命令会随首个版本一并提供。
 
 ## 插件架构方向
 
-Kantu 计划采用以下内部边界：
+ArchScope 计划采用以下内部边界：
 
 ```text
-Kantu Bundle
-├── Kantu Service
+ArchScope Bundle
+├── ArchScope Service
 │   ├── 扫描状态机
 │   ├── 任务与恢复
 │   ├── 产物管理
@@ -233,22 +242,22 @@ Kantu Bundle
 └── Report & Portal Generator
 ```
 
-代码图谱会是优先的代码发现方式，但不会成为唯一实现。Kantu 将尽量通过能力接口支持 codebase-memory、LSP、文件搜索以及未来的其他 Provider。
+代码图谱会是优先的代码发现方式，但不会成为唯一实现。ArchScope 将尽量通过能力接口支持 codebase-memory、LSP、文件搜索以及未来的其他 Provider。
 
 ## 发现与分发
 
-Kantu 将遵循 DeepSeek Harness 的官方插件发现约定。公开发布时，GitHub 仓库会添加精确的 [`dsh-plugin`](https://github.com/topics/dsh-plugin) Topic，使其能够进入 Harness 插件生态的发现入口。
+ArchScope 将遵循 DeepSeek Harness 的官方插件发现约定。公开发布时，GitHub 仓库会添加精确的 [`dsh-plugin`](https://github.com/topics/dsh-plugin) Topic，使其能够进入 Harness 插件生态的发现入口。
 
 可发现只是第一步。每个正式版本还必须同时满足：
 
 - 以包含 `dsh.bundle` manifest 的可安装 bundle 交付；
 - 提供预构建 npm 包，避免普通用户在安装时构建源码；
 - 支持通过 `dsh plugin --profile <name> add <package>` 安装和移除；
-- 能在 `dsh --profile <name> --dump-config` 中确认 Kantu 配置层；
+- 能在 `dsh --profile <name> --dump-config` 中确认 ArchScope 配置层；
 - 在 README 中提供可复制的安装命令、兼容版本和最小验证步骤；
 - 使用语义化版本、GitHub Release 和明确的迁移说明管理兼容性变化。
 
-被 Topic 检索到不代表获得 DeepSeek 官方认证。Kantu 会把“可以发现、可以安装、可以验证”作为同一套发布门禁，而不是只添加一个标签。
+被 Topic 检索到不代表获得 DeepSeek 官方认证。ArchScope 会把“可以发现、可以安装、可以验证”作为同一套发布门禁，而不是只添加一个标签。
 
 ## 设计原则
 
@@ -262,7 +271,7 @@ Kantu 将遵循 DeepSeek Harness 的官方插件发现约定。公开发布时�
 - **安全默认值**：默认不修改业务代码，不输出密钥、令牌、密码、私钥或完整敏感端点。
 - **模型与工具可替换**：核心协议不绑定某个特定模型、索引引擎或代码搜索工具。
 
-## Kantu 不是什么
+## ArchScope 不是什么
 
 - 不是代码行数、目录和依赖数量的统计器；
 - 不是把所有仓库一次性塞进上下文的超长 Prompt；
@@ -270,14 +279,14 @@ Kantu 将遵循 DeepSeek Harness 的官方插件发现约定。公开发布时�
 - 不是替代架构师、开发者和运维确认的自动真相机器；
 - 不是默认修改或“顺便重构”被扫描业务代码的编码 Agent。
 
-Kantu 的目标是提供一份更可信的认知起点，以及一条可以持续深化和复核的分析路径。
+ArchScope 的目标是提供一份更可信的认知起点，以及一条可以持续深化和复核的分析路径。
 
 ## 路线图
 
 ### 阶段一：最小可信闭环
 
 - [x] 建立独立的 TypeScript 插件工程与 Harness bundle
-- [x] 定义 Kantu Service、配置 schema 和基础工具
+- [x] 定义 ArchScope Service、配置 schema 和基础工具
 - [x] 完成多仓工程发现与稳定项目身份
 - [x] 打包系统级机器契约、策略、提示与协议锁
 - [x] 跑通独立索引、只读证据采集、系统事实底座生成与确定性校验
@@ -306,13 +315,13 @@ Kantu 的目标是提供一份更可信的认知起点，以及一条可以持�
 - [ ] 自定义证据源和组织级规则包
 - [ ] Headless、Web 与自动化工作流集成
 - [ ] 发布预构建 npm bundle，并验证标准安装和移除流程
-- [ ] 添加 `dsh-plugin` GitHub Topic，并验证生态发现入口可检索 Kantu
+- [ ] 添加 `dsh-plugin` GitHub Topic，并验证生态发现入口可检索 ArchScope
 
 路线图会随着 DeepSeek Harness 的 Developer Preview API 演进而调整。
 
 ## 参与项目
 
-Kantu 目前最需要的不是大量功能代码，而是对问题边界和协议设计的共同打磨。欢迎围绕以下主题参与讨论：
+ArchScope 目前最需要的不是大量功能代码，而是对问题边界和协议设计的共同打磨。欢迎围绕以下主题参与讨论：
 
 - 大型多仓系统接手时，最难确认的事实是什么？
 - 哪些架构结论必须由运行态证据支持？
@@ -329,4 +338,4 @@ Kantu 目前最需要的不是大量功能代码，而是对问题边界和协�
 
 ---
 
-**Kantu 不试图替你画一张漂亮但未经证明的架构图。它更关心：图上的每一条重要结论，是否知道自己从哪里来。**
+**ArchScope 不试图替你画一张漂亮但未经证明的架构图。它更关心：图上的每一条重要结论，是否知道自己从哪里来。**

@@ -72,4 +72,19 @@ describe('system protocol pack', () => {
       'SENSITIVE_VALUE_DETECTED',
     ]))
   })
+
+  it('rejects project-level route details and unbounded tables in worldview sections', async () => {
+    const pack = await loadProtocolPack()
+    const { registry, indexes, evidence, generatedAt } = fixture()
+    const validation = validateSystemArtifacts(registry, indexes, generatedAt, evidence)
+    const safe = renderSystemFactBase(registry, indexes, evidence, validation)
+    const rows = Array.from({ length: 7 }, (_value, index) => `| detail-${index} | project | 1 | raw | pending |`).join('\n')
+    const unsafe = safe.replace('## 6. 基础设施事实', `${rows}\n| leaked | POST /users | 1 | raw | pending |\n\n## 6. 基础设施事实`)
+    const issues = validateSystemDocument(unsafe, artifactPaths, pack)
+
+    expect(issues.map(issue => issue.code)).toEqual(expect.arrayContaining([
+      'SYSTEM_SECTION_TOO_DETAILED',
+      'SYSTEM_BOUNDARY_EXCEEDED',
+    ]))
+  })
 })

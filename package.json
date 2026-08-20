@@ -1,7 +1,7 @@
 {
-  "name": "dsh-kantu",
+  "name": "dsh-archscope",
   "version": "0.0.0",
-  "description": "Evidence-driven architecture reconnaissance for DeepSeek Harness",
+  "description": "Evidence-driven system architecture reconnaissance for DeepSeek Harness",
   "private": true,
   "type": "module",
   "main": "./lib/index.js",
@@ -37,17 +37,20 @@
   "keywords": [
     "deepseek-harness",
     "dsh-plugin",
+    "archscope",
     "cordis",
     "architecture",
+    "system-architecture",
+    "multi-repository",
     "code-analysis"
   ],
-  "homepage": "https://github.com/lvxinrong/Kantu#readme",
+  "homepage": "https://github.com/lvxinrong/dsh-archscope#readme",
   "bugs": {
-    "url": "https://github.com/lvxinrong/Kantu/issues"
+    "url": "https://github.com/lvxinrong/dsh-archscope/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lvxinrong/Kantu.git"
+    "url": "git+https://github.com/lvxinrong/dsh-archscope.git"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

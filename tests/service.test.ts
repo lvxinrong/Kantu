@@ -5,9 +5,9 @@ import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { KantuStatusResult, ProjectRegistry, SystemScanResult, SystemScanRunState, SystemValidationReport } from '../src/contracts/system-scan.js'
+import type { ArchScopeStatusResult, ProjectRegistry, SystemScanResult, SystemScanRunState, SystemValidationReport } from '../src/contracts/system-scan.js'
 import type { ProtocolLock } from '../src/protocol/catalog.js'
-import { KantuService } from '../src/service.js'
+import { ArchScopeService } from '../src/service.js'
 import type { SystemAnalyzer } from '../src/system/analyzer.js'
 import { createStatusTool } from '../src/tools/status.js'
 import { createSystemScanTool } from '../src/tools/system-scan.js'
@@ -69,11 +69,11 @@ afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
-describe('KantuService system scan', () => {
+describe('ArchScopeService system scan', () => {
   it('opens the project gate after fresh indexes and isolated evidence collection complete', async () => {
     const workspaceRoot = await fixtureWorkspace()
     const analyzer = completeAnalyzer()
-    const service = new KantuService(new Context(), {
+    const service = new ArchScopeService(new Context(), {
       workspaceRoot,
       outputDirectory: 'kantu_docs',
       discoveryMaxDepth: 3,
@@ -102,7 +102,7 @@ describe('KantuService system scan', () => {
 
   it('persists a truthful draft, run state, and deterministic validation', async () => {
     const workspaceRoot = await fixtureWorkspace()
-    const service = new KantuService(new Context(), {
+    const service = new ArchScopeService(new Context(), {
       workspaceRoot,
       outputDirectory: 'kantu_docs',
       discoveryMaxDepth: 3,
@@ -143,7 +143,7 @@ describe('KantuService system scan', () => {
 
   it('creates a new run only when refresh is requested', async () => {
     const workspaceRoot = await fixtureWorkspace()
-    const service = new KantuService(new Context(), {
+    const service = new ArchScopeService(new Context(), {
       workspaceRoot,
       outputDirectory: 'kantu_docs',
       discoveryMaxDepth: 3,
@@ -163,7 +163,7 @@ describe('KantuService system scan', () => {
 
   it('runs the model-facing scan and status tool bodies without a model API', async () => {
     const workspaceRoot = await fixtureWorkspace()
-    const service = new KantuService(new Context(), {
+    const service = new ArchScopeService(new Context(), {
       workspaceRoot,
       outputDirectory: 'kantu_docs',
       discoveryMaxDepth: 3,
@@ -174,7 +174,7 @@ describe('KantuService system scan', () => {
     const execution = { signal: new AbortController().signal } as never
 
     const scan = await createSystemScanTool(service).execute({ refresh: false }, execution) as SystemScanResult
-    const status = await createStatusTool(service).execute({ runId: scan.runId }, execution) as KantuStatusResult
+    const status = await createStatusTool(service).execute({ runId: scan.runId }, execution) as ArchScopeStatusResult
 
     expect(scan).toMatchObject({ status: 'BLOCKED', gate: 'BLOCKED', projectCount: 1 })
     expect(status).toMatchObject({ found: true, runId: scan.runId, validation: 'PASSED' })
@@ -182,7 +182,7 @@ describe('KantuService system scan', () => {
 
   it('uses the invoking DeepSeek Harness session workspace when no override is configured', async () => {
     const workspaceRoot = await fixtureWorkspace()
-    const service = new KantuService(new Context(), {
+    const service = new ArchScopeService(new Context(), {
       outputDirectory: 'kantu_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
@@ -196,7 +196,7 @@ describe('KantuService system scan', () => {
 
     const scan = await createSystemScanTool(service).execute({ refresh: false }, execution) as SystemScanResult
     const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'kantu_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
-    const status = await createStatusTool(service).execute({ runId: scan.runId }, execution) as KantuStatusResult
+    const status = await createStatusTool(service).execute({ runId: scan.runId }, execution) as ArchScopeStatusResult
 
     expect(scan.projectCount).toBe(1)
     expect(registry.projects[0]?.projectDir).toBe('.')
@@ -204,7 +204,7 @@ describe('KantuService system scan', () => {
   })
 
   it('fails closed without a session workspace or an absolute headless override', async () => {
-    const service = new KantuService(new Context(), {
+    const service = new ArchScopeService(new Context(), {
       outputDirectory: 'kantu_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
@@ -218,7 +218,7 @@ describe('KantuService system scan', () => {
   it('rejects output paths outside the workspace', async () => {
     const workspaceRoot = await fixtureWorkspace()
 
-    const service = new KantuService(new Context(), {
+    const service = new ArchScopeService(new Context(), {
       workspaceRoot,
       outputDirectory: '../outside',
       discoveryMaxDepth: 3,
@@ -233,7 +233,7 @@ describe('KantuService system scan', () => {
   it('rejects absolute output paths even when they point into the workspace', async () => {
     const workspaceRoot = await fixtureWorkspace()
 
-    const service = new KantuService(new Context(), {
+    const service = new ArchScopeService(new Context(), {
       workspaceRoot,
       outputDirectory: path.join(workspaceRoot, 'kantu_docs'),
       discoveryMaxDepth: 3,

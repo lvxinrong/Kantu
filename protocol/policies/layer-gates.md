@@ -9,4 +9,4 @@ The four state fields are independent:
 - validation status says whether deterministic checks passed;
 - downstream gate is the only transition signal.
 
-A structurally valid draft may have `校验状态=PASSED` while remaining `下层门禁=BLOCKED`. Kantu does not enter project analysis automatically after a system scan. The system-to-project transition is defined only by `kantu/contract/layer-state-machine/v1`.
+A structurally valid draft may have `校验状态=PASSED` while remaining `下层门禁=BLOCKED`. ArchScope does not enter project analysis automatically after a system scan. The system-to-project transition is defined only by `kantu/contract/layer-state-machine/v1`.

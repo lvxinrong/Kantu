@@ -1,22 +1,22 @@
 {
   "manifestVersion": "1",
   "packId": "kantu/protocol/system/v1",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "layer": "system",
   "resources": [
     { "id": "kantu/contract/evidence/v1", "version": "1.0.0", "kind": "contract", "path": "contracts/evidence-v1.json" },
     { "id": "kantu/contract/index-manifest/v1", "version": "1.1.0", "kind": "contract", "path": "contracts/index-manifest-v1.json" },
     { "id": "kantu/contract/system-evidence/v1", "version": "1.1.0", "kind": "contract", "path": "contracts/system-evidence-v1.json" },
     { "id": "kantu/contract/project-registry/v1", "version": "1.0.0", "kind": "contract", "path": "contracts/project-registry-v1.json" },
-    { "id": "kantu/contract/system-document/v1", "version": "1.1.0", "kind": "contract", "path": "contracts/system-document-v1.json" },
+    { "id": "kantu/contract/system-document/v1", "version": "1.2.0", "kind": "contract", "path": "contracts/system-document-v1.json" },
     { "id": "kantu/contract/layer-state-machine/v1", "version": "1.0.0", "kind": "contract", "path": "contracts/layer-state-machine-v1.json" },
     { "id": "kantu/policy/contract-versioning/v1", "version": "1.0.0", "kind": "policy", "path": "policies/contract-versioning.md" },
     { "id": "kantu/policy/evidence-and-redaction/v1", "version": "1.0.0", "kind": "policy", "path": "policies/evidence-and-redaction.md" },
     { "id": "kantu/policy/layer-gates/v1", "version": "1.0.0", "kind": "policy", "path": "policies/layer-gates.md" },
     { "id": "kantu/policy/output-paths/v1", "version": "1.0.0", "kind": "policy", "path": "policies/output-paths.md" },
-    { "id": "kantu/policy/system-analysis/v1", "version": "1.1.0", "kind": "policy", "path": "policies/system-analysis.md" },
+    { "id": "kantu/policy/system-analysis/v1", "version": "1.2.0", "kind": "policy", "path": "policies/system-analysis.md" },
     { "id": "kantu/policy/system-validation/v1", "version": "1.0.0", "kind": "policy", "path": "policies/system-validation.md" },
-    { "id": "kantu/prompt/system-scan/v1", "version": "1.1.0", "kind": "prompt", "path": "prompts/system-scan.md" },
+    { "id": "kantu/prompt/system-scan/v1", "version": "1.2.0", "kind": "prompt", "path": "prompts/system-scan.md" },
     { "id": "kantu/prompt/system-evidence-task/v1", "version": "1.2.0", "kind": "prompt", "path": "prompts/system-evidence-task.md" }
   ]
 }

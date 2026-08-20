@@ -1,11 +1,15 @@
-export type KantuIntent =
+export type ArchScopeIntent =
   | { kind: 'help' }
   | { kind: 'system.scan'; refresh: boolean }
   | { kind: 'project.scan'; projectKey: string; refresh: boolean }
   | { kind: 'run.status'; runId?: string }
   | { kind: 'run.resume'; runId?: string }
 
-export type KantuIntentParseResult =
-  | { ok: true; intent: KantuIntent }
+export type ArchScopeIntentParseResult =
+  | { ok: true; intent: ArchScopeIntent }
   | { ok: false; error: string }
 
+/** @deprecated Use ArchScopeIntent. */
+export type KantuIntent = ArchScopeIntent
+/** @deprecated Use ArchScopeIntentParseResult. */
+export type KantuIntentParseResult = ArchScopeIntentParseResult

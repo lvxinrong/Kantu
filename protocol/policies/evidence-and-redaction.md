@@ -1,6 +1,6 @@
 # Evidence and redaction
 
-Kantu keeps three axes separate: source evidence strength, runtime confirmation, and assertion strength. A source-code finding can confirm that an implementation exists; it cannot confirm that the implementation is deployed, enabled, or used in production.
+ArchScope keeps three axes separate: source evidence strength, runtime confirmation, and assertion strength. A source-code finding can confirm that an implementation exists; it cannot confirm that the implementation is deployed, enabled, or used in production.
 
 Evidence is arbitrated in this order: runtime observation, explicit human confirmation, deployment and release material, code graph, source code, then historical documentation. Conflicting evidence is retained as `冲突待复核`; it is not silently resolved by the newest or most convenient source.
 
