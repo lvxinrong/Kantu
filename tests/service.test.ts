@@ -15,7 +15,7 @@ import { createSystemScanTool } from '../src/tools/system-scan.js'
 const temporaryRoots: string[] = []
 
 async function fixtureWorkspace(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), 'kantu-service-'))
+  const root = await mkdtemp(path.join(tmpdir(), 'archscope-service-'))
   temporaryRoots.push(root)
   await mkdir(path.join(root, '.git'), { recursive: true })
   await writeFile(path.join(root, '.git', 'HEAD'), '0123456789abcdef0123456789abcdef01234567\n')
@@ -27,7 +27,7 @@ function completeAnalyzer(): SystemAnalyzer {
   return {
     async index(projects, options) {
       return {
-        protocolVersion: 'kantu/system-scan/v1',
+        protocolVersion: 'archscope/system-scan/v1',
         generatedAt: options.generatedAt,
         records: projects.map(project => ({
           projectKey: project.projectKey,
@@ -41,7 +41,7 @@ function completeAnalyzer(): SystemAnalyzer {
     },
     async collectEvidence(projects, _indexes, options) {
       return {
-        protocolVersion: 'kantu/system-scan/v1',
+        protocolVersion: 'archscope/system-scan/v1',
         generatedAt: options.generatedAt,
         records: projects.map(project => ({
           projectKey: project.projectKey,
@@ -75,7 +75,7 @@ describe('ArchScopeService system scan', () => {
     const analyzer = completeAnalyzer()
     const service = new ArchScopeService(new Context(), {
       workspaceRoot,
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
       registerSystemScanTool: false,
@@ -83,8 +83,8 @@ describe('ArchScopeService system scan', () => {
     }, analyzer)
 
     const result = await service.scanSystem()
-    const evidence = await readFile(path.join(workspaceRoot, 'kantu_docs/system/evidence/index.json'), 'utf8')
-    const factBase = await readFile(path.join(workspaceRoot, 'kantu_docs/system/00-system-fact-base.md'), 'utf8')
+    const evidence = await readFile(path.join(workspaceRoot, 'archscope_docs/system/evidence/index.json'), 'utf8')
+    const factBase = await readFile(path.join(workspaceRoot, 'archscope_docs/system/00-system-fact-base.md'), 'utf8')
 
     expect(result).toMatchObject({
       status: 'COMPLETED',
@@ -104,7 +104,7 @@ describe('ArchScopeService system scan', () => {
     const workspaceRoot = await fixtureWorkspace()
     const service = new ArchScopeService(new Context(), {
       workspaceRoot,
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: true,
       registerSystemScanTool: true,
@@ -114,11 +114,11 @@ describe('ArchScopeService system scan', () => {
     const first = await service.scanSystem()
     const second = await service.scanSystem()
     const status = await service.status(first.runId)
-    const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'kantu_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
-    const validation = JSON.parse(await readFile(path.join(workspaceRoot, 'kantu_docs/system/validation.json'), 'utf8')) as SystemValidationReport
-    const protocolLock = JSON.parse(await readFile(path.join(workspaceRoot, 'kantu_docs/system/protocol-lock.json'), 'utf8')) as ProtocolLock
-    const runState = JSON.parse(await readFile(path.join(workspaceRoot, `kantu_docs/runs/${first.runId}/state.json`), 'utf8')) as SystemScanRunState
-    const factBase = await readFile(path.join(workspaceRoot, 'kantu_docs/system/00-system-fact-base.md'), 'utf8')
+    const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
+    const validation = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/validation.json'), 'utf8')) as SystemValidationReport
+    const protocolLock = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/protocol-lock.json'), 'utf8')) as ProtocolLock
+    const runState = JSON.parse(await readFile(path.join(workspaceRoot, `archscope_docs/runs/${first.runId}/state.json`), 'utf8')) as SystemScanRunState
+    const factBase = await readFile(path.join(workspaceRoot, 'archscope_docs/system/00-system-fact-base.md'), 'utf8')
 
     expect(first).toMatchObject({
       status: 'BLOCKED',
@@ -145,7 +145,7 @@ describe('ArchScopeService system scan', () => {
     const workspaceRoot = await fixtureWorkspace()
     const service = new ArchScopeService(new Context(), {
       workspaceRoot,
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
       registerSystemScanTool: false,
@@ -165,7 +165,7 @@ describe('ArchScopeService system scan', () => {
     const workspaceRoot = await fixtureWorkspace()
     const service = new ArchScopeService(new Context(), {
       workspaceRoot,
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
       registerSystemScanTool: true,
@@ -183,7 +183,7 @@ describe('ArchScopeService system scan', () => {
   it('uses the invoking DeepSeek Harness session workspace when no override is configured', async () => {
     const workspaceRoot = await fixtureWorkspace()
     const service = new ArchScopeService(new Context(), {
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
       registerSystemScanTool: true,
@@ -195,7 +195,7 @@ describe('ArchScopeService system scan', () => {
     } as never
 
     const scan = await createSystemScanTool(service).execute({ refresh: false }, execution) as SystemScanResult
-    const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'kantu_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
+    const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
     const status = await createStatusTool(service).execute({ runId: scan.runId }, execution) as ArchScopeStatusResult
 
     expect(scan.projectCount).toBe(1)
@@ -205,7 +205,7 @@ describe('ArchScopeService system scan', () => {
 
   it('fails closed without a session workspace or an absolute headless override', async () => {
     const service = new ArchScopeService(new Context(), {
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
       registerSystemScanTool: false,
@@ -235,7 +235,7 @@ describe('ArchScopeService system scan', () => {
 
     const service = new ArchScopeService(new Context(), {
       workspaceRoot,
-      outputDirectory: path.join(workspaceRoot, 'kantu_docs'),
+      outputDirectory: path.join(workspaceRoot, 'archscope_docs'),
       discoveryMaxDepth: 3,
       registerCommand: false,
       registerSystemScanTool: false,

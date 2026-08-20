@@ -14,7 +14,7 @@ afterEach(async () => {
 
 describe('collectSafeProjectMetadata', () => {
   it('reads bounded metadata inside one project and redacts values before model injection', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'kantu-metadata-'))
+    const root = await mkdtemp(path.join(tmpdir(), 'archscope-metadata-'))
     temporaryRoots.push(root)
     const outside = path.join(root, '..', `${path.basename(root)}-outside.txt`)
     await writeFile(outside, 'outside-secret', 'utf8')

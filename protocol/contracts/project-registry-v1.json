@@ -1,5 +1,5 @@
 {
-  "contractId": "kantu/contract/project-registry/v1",
+  "contractId": "archscope/contract/project-registry/v1",
   "version": "1.0.0",
   "rootFields": ["protocolVersion", "generatedAt", "workspaceRoot", "discoveryMaxDepth", "projectCount", "projects", "skippedDirectories"],
   "projectFields": ["projectKey", "projectName", "projectDir", "gitHead", "projectType", "classificationEvidence", "productionStatus"],

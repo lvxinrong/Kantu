@@ -1,9 +1,9 @@
 import type { ValidationIssue } from '../contracts/system-scan.js'
 import { parseProtocolContract, type LoadedProtocolPack } from './catalog.js'
 
-const SYSTEM_DOCUMENT_CONTRACT = 'kantu/contract/system-document/v1'
-const EVIDENCE_CONTRACT = 'kantu/contract/evidence/v1'
-const LAYER_STATE_CONTRACT = 'kantu/contract/layer-state-machine/v1'
+const SYSTEM_DOCUMENT_CONTRACT = 'archscope/contract/system-document/v1'
+const EVIDENCE_CONTRACT = 'archscope/contract/evidence/v1'
+const LAYER_STATE_CONTRACT = 'archscope/contract/layer-state-machine/v1'
 
 interface SystemDocumentContract {
   metadata: Record<string, string[]>

@@ -20,34 +20,28 @@ const SUBCOMMAND_ALIASES = new Map<string, string>([
   ['帮助', 'help'],
 ])
 
-function commandHelp(commandName: 'archscope' | 'kantu'): string {
-  return `ArchScope commands:
-  /${commandName} system [--refresh]
-  /${commandName} project <project-key> [--refresh]
-  /${commandName} status [run-id]
-  /${commandName} resume [run-id]
-  /${commandName} help
+export const ARCHSCOPE_COMMAND_HELP = `ArchScope commands:
+  /archscope system [--refresh]
+  /archscope project <project-key> [--refresh]
+  /archscope status [run-id]
+  /archscope resume [run-id]
+  /archscope help
 
 Chinese aliases: 系统级扫描, 项目级扫描, 状态, 继续, 帮助`
+
+function failure(message: string): ArchScopeIntentParseResult {
+  return { ok: false, error: `${message}\n\n${ARCHSCOPE_COMMAND_HELP}` }
 }
 
-export const ARCHSCOPE_COMMAND_HELP = commandHelp('archscope')
-/** @deprecated Use ARCHSCOPE_COMMAND_HELP. */
-export const KANTU_COMMAND_HELP = commandHelp('kantu')
-
-function failure(message: string, help: string): ArchScopeIntentParseResult {
-  return { ok: false, error: `${message}\n\n${help}` }
-}
-
-function parseRefreshArguments(args: string[], usage: string, help: string): ArchScopeIntentParseResult | boolean {
+function parseRefreshArguments(args: string[], usage: string): ArchScopeIntentParseResult | boolean {
   if (args.length === 0) return false
   if (args.length === 1 && args[0] === '--refresh') return true
-  return failure(`Invalid arguments. Usage: ${usage}`, help)
+  return failure(`Invalid arguments. Usage: ${usage}`)
 }
 
-function parseOptionalRunId(args: string[], kind: 'run.status' | 'run.resume', usage: string, help: string): ArchScopeIntentParseResult {
+function parseOptionalRunId(args: string[], kind: 'run.status' | 'run.resume', usage: string): ArchScopeIntentParseResult {
   if (args.length > 1 || args[0]?.startsWith('-')) {
-    return failure(`Invalid arguments. Usage: ${usage}`, help)
+    return failure(`Invalid arguments. Usage: ${usage}`)
   }
   return {
     ok: true,
@@ -55,9 +49,8 @@ function parseOptionalRunId(args: string[], kind: 'run.status' | 'run.resume', u
   }
 }
 
-export function parseArchScopeCommand(rawInput: string, commandName: 'archscope' | 'kantu' = 'archscope'): ArchScopeIntentParseResult {
-  const help = commandHelp(commandName)
-  const command = `/${commandName}`
+export function parseArchScopeCommand(rawInput: string): ArchScopeIntentParseResult {
+  const command = '/archscope'
   const tokens = rawInput.trim().split(/\s+/u).filter(Boolean)
   if (tokens.length === 0) return { ok: true, intent: { kind: 'help' } }
 
@@ -68,9 +61,9 @@ export function parseArchScopeCommand(rawInput: string, commandName: 'archscope'
     case 'help':
       return args.length === 0
         ? { ok: true, intent: { kind: 'help' } }
-        : failure(`Invalid arguments. Usage: ${command} help`, help)
+        : failure(`Invalid arguments. Usage: ${command} help`)
     case 'system': {
-      const refresh = parseRefreshArguments(args, `${command} system [--refresh]`, help)
+      const refresh = parseRefreshArguments(args, `${command} system [--refresh]`)
       return typeof refresh === 'boolean'
         ? { ok: true, intent: { kind: 'system.scan', refresh } }
         : refresh
@@ -78,19 +71,19 @@ export function parseArchScopeCommand(rawInput: string, commandName: 'archscope'
     case 'project': {
       const [projectKey, ...rest] = args
       if (projectKey === undefined || projectKey.startsWith('-')) {
-        return failure(`Missing project-key. Usage: ${command} project <project-key> [--refresh]`, help)
+        return failure(`Missing project-key. Usage: ${command} project <project-key> [--refresh]`)
       }
-      const refresh = parseRefreshArguments(rest, `${command} project <project-key> [--refresh]`, help)
+      const refresh = parseRefreshArguments(rest, `${command} project <project-key> [--refresh]`)
       return typeof refresh === 'boolean'
         ? { ok: true, intent: { kind: 'project.scan', projectKey, refresh } }
         : refresh
     }
     case 'status':
-      return parseOptionalRunId(args, 'run.status', `${command} status [run-id]`, help)
+      return parseOptionalRunId(args, 'run.status', `${command} status [run-id]`)
     case 'resume':
-      return parseOptionalRunId(args, 'run.resume', `${command} resume [run-id]`, help)
+      return parseOptionalRunId(args, 'run.resume', `${command} resume [run-id]`)
     default:
-      return failure(`Unknown ArchScope subcommand: ${rawSubcommand ?? ''}`, help)
+      return failure(`Unknown ArchScope subcommand: ${rawSubcommand ?? ''}`)
   }
 }
 
@@ -98,9 +91,6 @@ export interface ArchScopeCommandRuntime {
   scanSystem(options: { refresh?: boolean, signal?: AbortSignal, workspaceRoot?: string, agent?: ToolExecutionInput['agent'], onProgress?: (progress: SystemScanProgress) => void }): Promise<SystemScanResult>
   status(runId?: string, options?: { workspaceRoot?: string }): Promise<ArchScopeStatusResult>
 }
-
-/** @deprecated Use ArchScopeCommandRuntime. */
-export type KantuCommandRuntime = ArchScopeCommandRuntime
 
 function createSystemScanStartedMessage(refresh: boolean) {
   return createUserMessage({
@@ -193,11 +183,10 @@ export async function executeArchScopeIntent(
   runtime: ArchScopeCommandRuntime,
   signal?: AbortSignal,
   workspaceRoot?: string,
-  help = ARCHSCOPE_COMMAND_HELP,
 ): Promise<CommandResult> {
   switch (intent.kind) {
     case 'help':
-      return { kind: 'success', text: help }
+      return { kind: 'success', text: ARCHSCOPE_COMMAND_HELP }
     case 'run.status':
       return { kind: 'success', text: createStatusMessage(await runtime.status(intent.runId, { workspaceRoot })) }
     case 'system.scan': {
@@ -217,16 +206,13 @@ export async function executeArchScopeIntent(
   }
 }
 
-export function createArchScopeCommand(
-  runtime: ArchScopeCommandRuntime,
-  commandName: 'archscope' | 'kantu' = 'archscope',
-): CommandDefinition {
+export function createArchScopeCommand(runtime: ArchScopeCommandRuntime): CommandDefinition {
   return {
-    name: commandName,
+    name: 'archscope',
     description: 'run and inspect evidence-driven ArchScope architecture scans',
     input: { hint: 'system | project <project-key> | status | resume | help' },
     handler: async ({ rawInput, signal, agent }) => {
-      const parsed = parseArchScopeCommand(rawInput, commandName)
+      const parsed = parseArchScopeCommand(rawInput)
       if (!parsed.ok) return { kind: 'error', text: parsed.error }
 
       if (parsed.intent.kind === 'system.scan') {
@@ -249,20 +235,7 @@ export function createArchScopeCommand(
         }
       }
 
-      return executeArchScopeIntent(parsed.intent, runtime, signal, agent.session.header.cwd, commandHelp(commandName))
+      return executeArchScopeIntent(parsed.intent, runtime, signal, agent.session.header.cwd)
     },
   }
-}
-
-/** @deprecated Use parseArchScopeCommand. */
-export function parseKantuCommand(rawInput: string): ArchScopeIntentParseResult {
-  return parseArchScopeCommand(rawInput, 'kantu')
-}
-
-/** @deprecated Use executeArchScopeIntent. */
-export const executeKantuIntent = executeArchScopeIntent
-
-/** @deprecated Use createArchScopeCommand. */
-export function createKantuCommand(runtime: ArchScopeCommandRuntime): CommandDefinition {
-  return createArchScopeCommand(runtime, 'kantu')
 }

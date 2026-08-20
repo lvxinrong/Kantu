@@ -10,8 +10,7 @@
     - id: archscope
       name: dsh-archscope
       config:
-        # Kept for compatibility with pre-rename scan artifacts; configurable per installation.
-        outputDirectory: kantu_docs
+        outputDirectory: archscope_docs
         discoveryMaxDepth: 3
         codebaseMemoryServerName: codebase_memory_mcp
         indexMode: moderate
@@ -20,4 +19,3 @@
         registerCommand: true
         registerSystemScanTool: true
         registerStatusTool: true
-        registerLegacyAliases: true

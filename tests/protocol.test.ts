@@ -40,7 +40,7 @@ describe('system protocol pack', () => {
   it('loads every versioned resource and produces a reproducible lock', async () => {
     const pack = await loadProtocolPack()
 
-    expect(pack.manifest.packId).toBe('kantu/protocol/system/v1')
+    expect(pack.manifest.packId).toBe('archscope/protocol/system/v1')
     expect(pack.resources).toHaveLength(pack.manifest.resources.length)
     expect(pack.lock.packDigest).toMatch(/^[a-f0-9]{64}$/u)
     expect(pack.lock.resources.every(resource => /^[a-f0-9]{64}$/u.test(resource.digest))).toBe(true)
@@ -51,7 +51,7 @@ describe('system protocol pack', () => {
     const { registry, indexes, evidence, generatedAt } = fixture()
     const validation = validateSystemArtifacts(registry, indexes, generatedAt, evidence)
     const factBase = renderSystemFactBase(registry, indexes, evidence, validation)
-    const contract = parseProtocolContract<{ headings: string[] }>(pack, 'kantu/contract/system-document/v1')
+    const contract = parseProtocolContract<{ headings: string[] }>(pack, 'archscope/contract/system-document/v1')
 
     expect(markdownHeadings(factBase)).toEqual(contract.headings)
     expect(validateSystemDocument(factBase, artifactPaths, pack)).toEqual([])

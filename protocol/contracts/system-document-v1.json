@@ -1,8 +1,8 @@
 {
-  "contractId": "kantu/contract/system-document/v1",
+  "contractId": "archscope/contract/system-document/v1",
   "version": "1.2.0",
   "metadata": {
-    "协议版本": ["kantu/contract/system-document/v1"],
+    "协议版本": ["archscope/contract/system-document/v1"],
     "文档状态": ["完整", "草稿"],
     "证据状态": ["运行态已确认", "运行态部分确认，人工待确认", "源码视角已完成，运行态待确认", "证据不足"],
     "下层门禁": ["READY", "BLOCKED"],

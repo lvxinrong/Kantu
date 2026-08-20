@@ -129,8 +129,6 @@ ArchScope 计划让用户通过 Harness 工具用自然语言表达目标。当�
 
 命令同时接受中文子命令别名。Slash command 使用严格解析，不猜测错误输入；参数不合法时只返回用法说明。`system` 会依次完成工程发现、独立索引、逐工程证据采集、事实底座综合和确定性校验，并在主对话中汇报阶段与四分位进度。首次扫描或 `--refresh` 可能耗时较长；普通扫描会按工程绝对根路径复用已有索引。已完成且协议版本一致的运行可以直接复用，`BLOCKED` 运行会在下次执行时重新尝试，而不是永久缓存失败。
 
-品牌迁移期间，`/kantu` 会作为 `/archscope` 的废弃兼容别名继续工作；旧模型工具 `kantu_scan_system` 与 `kantu_status` 默认也会注册，可以通过 `registerLegacyAliases: false` 关闭。所有新接入都应只使用 ArchScope 命名。
-
 源码视角的索引和证据全部完成后，系统门禁可以进入 `READY`；这仍不等于生产拓扑已得到确认。缺失 MCP 工具、索引失败、worker 失败或越界读取都会让门禁保持 `BLOCKED`。`system`、`status` 和 `help` 已可执行；`project` 与 `resume` 已保留命令契约，在对应执行流程完成前保持失败关闭。
 
 后续模型工具会围绕以下能力继续扩展：
@@ -154,7 +152,7 @@ validate artifacts
 ArchScope 默认只在独立输出目录中写入分析产物，不修改业务代码：
 
 ```text
-kantu_docs/
+archscope_docs/
 ├── system/
 │   ├── 00-system-fact-base.md
 │   ├── project-registry.json
@@ -189,7 +187,7 @@ ArchScope 将系统级分析知识作为版本化的 `protocol/` 目录随插件
 | 配置项 | 默认值 | 作用 |
 |---|---|---|
 | `workspaceRoot` | 当前 DSH 会话工作区 | 可选扫描根覆盖；相对路径以会话工作区为基准解析 |
-| `outputDirectory` | `kantu_docs` | 工作区内部的产物目录 |
+| `outputDirectory` | `archscope_docs` | 工作区内部的产物目录 |
 | `discoveryMaxDepth` | `3` | 递归发现 Git 根的最大深度 |
 | `codebaseMemoryServerName` | `codebase_memory_mcp` | codebase-memory MCP 工具的 DSH namespace |
 | `indexMode` | `moderate` | 新建或刷新索引时使用的 `fast` / `moderate` / `full` 模式 |
@@ -198,11 +196,7 @@ ArchScope 将系统级分析知识作为版本化的 `protocol/` 目录随插件
 | `registerCommand` | `true` | 注册可选的 `/archscope` 命令 |
 | `registerSystemScanTool` | `true` | 注册 `archscope_scan_system` |
 | `registerStatusTool` | `true` | 注册 `archscope_status` |
-| `registerLegacyAliases` | `true` | 临时注册已废弃的 `/kantu` 与 `kantu_*` 兼容别名 |
-
-默认产物目录 `kantu_docs/` 与 `kantu/.../v1` 协议标识会作为历史扫描数据的兼容标识暂时保留，它们不再代表产品品牌。未来只有在协议大版本升级并提供明确数据迁移路径时，才会更换这些持久化标识。
-
-规范命名与兼容边界记录在 [`docs/brand.md`](./docs/brand.md)。
+规范命名记录在 [`docs/brand.md`](./docs/brand.md)。
 
 ArchScope bundle 会同时挂载 DeepSeek Harness 官方 `@deepseek-ai/dsh-mcp-client`，并通过 stdio 启动 `codebase-memory-mcp`。因此运行前需要确保该可执行文件在启动 DSH 的 `PATH` 中：
 

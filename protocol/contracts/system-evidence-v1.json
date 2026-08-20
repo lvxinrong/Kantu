@@ -1,5 +1,5 @@
 {
-  "contractId": "kantu/contract/system-evidence/v1",
+  "contractId": "archscope/contract/system-evidence/v1",
   "version": "1.1.0",
   "bundleFields": ["protocolVersion", "generatedAt", "records"],
   "recordFields": [

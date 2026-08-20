@@ -6,4 +6,4 @@ Evidence is arbitrated in this order: runtime observation, explicit human confir
 
 Every important conclusion records its evidence type, location, date when available, and confidence boundary. Missing evidence is expressed as `待确认` or `当前未发现`, never filled by inference.
 
-Passwords, tokens, secrets, private keys, complete JDBC URLs, production accounts, production IPs, complete internal domains, signed URLs, and SDK keys must not enter reports or task envelopes. Prefer a safe category, a redacted placeholder, and a path-only reference to the source. Detection is deterministic and governed by `kantu/contract/evidence/v1`.
+Passwords, tokens, secrets, private keys, complete JDBC URLs, production accounts, production IPs, complete internal domains, signed URLs, and SDK keys must not enter reports or task envelopes. Prefer a safe category, a redacted placeholder, and a path-only reference to the source. Detection is deterministic and governed by `archscope/contract/evidence/v1`.

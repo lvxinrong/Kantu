@@ -4,7 +4,6 @@ import {
   createArchScopeCommand,
   executeArchScopeIntent,
   ARCHSCOPE_COMMAND_HELP,
-  parseKantuCommand,
   parseArchScopeCommand,
   type ArchScopeCommandRuntime,
 } from '../src/commands/archscope.js'
@@ -41,12 +40,6 @@ describe('parseArchScopeCommand', () => {
     if (!result.ok) expect(result.error).toContain('/archscope help')
   })
 
-  it('keeps /kantu parsing as a deprecated compatibility alias', () => {
-    expect(parseKantuCommand('system --refresh')).toEqual({
-      ok: true,
-      intent: { kind: 'system.scan', refresh: true },
-    })
-  })
 })
 
 describe('executeArchScopeIntent', () => {
@@ -61,7 +54,7 @@ describe('executeArchScopeIntent', () => {
         indexedProjectCount: 2,
         evidenceProjectCount: 1,
         scopeViolationCount: 0,
-        outputDirectory: 'kantu_docs',
+        outputDirectory: 'archscope_docs',
         reused: false,
       }
     },
@@ -76,7 +69,7 @@ describe('executeArchScopeIntent', () => {
         indexedProjectCount: 2,
         evidenceProjectCount: 1,
         scopeViolationCount: 0,
-        outputDirectory: 'kantu_docs',
+        outputDirectory: 'archscope_docs',
       }
     },
   }

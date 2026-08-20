@@ -79,7 +79,7 @@ describe('DshSystemAnalyzer', () => {
       },
     } as unknown as Context
     const analyzer = new DshSystemAnalyzer(ctx, {
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: true,
       registerSystemScanTool: true,
@@ -125,7 +125,7 @@ describe('DshSystemAnalyzer', () => {
   it('fails closed when the DSH tools service is unavailable', async () => {
     const ctx = { get() { return undefined } } as unknown as Context
     const analyzer = new DshSystemAnalyzer(ctx, {
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
       registerSystemScanTool: false,
@@ -161,7 +161,7 @@ describe('DshSystemAnalyzer', () => {
     }
     const ctx = { get(name: string) { return name === 'tools' ? tools : undefined } } as unknown as Context
     const analyzer = new DshSystemAnalyzer(ctx, {
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
       registerSystemScanTool: false,

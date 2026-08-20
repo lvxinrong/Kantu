@@ -1,5 +1,5 @@
 {
-  "contractId": "kantu/contract/evidence/v1",
+  "contractId": "archscope/contract/evidence/v1",
   "version": "1.0.0",
   "sourceEvidenceLevels": ["高", "中", "低", "当前未发现"],
   "runtimeConfirmationStates": ["已确认", "待确认", "未观察到", "已确认未使用"],

@@ -8,8 +8,3 @@ export type ArchScopeIntent =
 export type ArchScopeIntentParseResult =
   | { ok: true; intent: ArchScopeIntent }
   | { ok: false; error: string }
-
-/** @deprecated Use ArchScopeIntent. */
-export type KantuIntent = ArchScopeIntent
-/** @deprecated Use ArchScopeIntentParseResult. */
-export type KantuIntentParseResult = ArchScopeIntentParseResult

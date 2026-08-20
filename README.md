@@ -129,8 +129,6 @@ For deterministic, scriptable control, the same intents use one strict command n
 
 Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. `system` performs discovery, independent indexing, per-project evidence collection, fact-base synthesis, and deterministic validation. It reports stages and quarter-progress milestones in the main conversation. A first scan—or a run with `--refresh`—can take substantial time; a normal run reuses indexes matched by the project's exact absolute root. Completed runs with the same protocol can be reused, while `BLOCKED` runs are retried instead of permanently caching failure.
 
-During the rename transition, `/kantu` remains a deprecated alias for `/archscope`. The legacy model tools `kantu_scan_system` and `kantu_status` are also registered by default and can be disabled with `registerLegacyAliases: false`. New integrations should use only the ArchScope names.
-
 The project gate can become `READY` once source-level indexes and evidence are complete. This does not claim that the production topology has been confirmed. Missing MCP tools, failed indexes, failed workers, or scope violations keep the gate `BLOCKED`. `system`, `status`, and `help` are runnable; `project` and `resume` remain reserved and fail closed until their workflows exist.
 
 The planned model-facing surface will grow around capabilities like these:
@@ -154,7 +152,7 @@ Users should interact with a small set of clear analysis intents, not a long lis
 By default, ArchScope writes analysis artifacts to an isolated output directory and does not modify business code:
 
 ```text
-kantu_docs/
+archscope_docs/
 ├── system/
 │   ├── 00-system-fact-base.md
 │   ├── project-registry.json
@@ -189,7 +187,7 @@ The plugin loads and validates this catalog at runtime. Every scan writes `syste
 | Option | Default | Purpose |
 |---|---|---|
 | `workspaceRoot` | Current DSH session workspace | Optional scan-root override; relative values resolve from the session workspace |
-| `outputDirectory` | `kantu_docs` | Artifact directory inside the workspace |
+| `outputDirectory` | `archscope_docs` | Artifact directory inside the workspace |
 | `discoveryMaxDepth` | `3` | Maximum recursive depth for Git-root discovery |
 | `codebaseMemoryServerName` | `codebase_memory_mcp` | DSH namespace for codebase-memory MCP tools |
 | `indexMode` | `moderate` | `fast`, `moderate`, or `full` mode for new or refreshed indexes |
@@ -198,11 +196,7 @@ The plugin loads and validates this catalog at runtime. Every scan writes `syste
 | `registerCommand` | `true` | Register the optional `/archscope` command |
 | `registerSystemScanTool` | `true` | Register `archscope_scan_system` |
 | `registerStatusTool` | `true` | Register `archscope_status` |
-| `registerLegacyAliases` | `true` | Temporarily register deprecated `/kantu` and `kantu_*` aliases |
-
-The default `kantu_docs/` artifact directory and the `kantu/.../v1` protocol identifiers are intentionally retained as compatibility identifiers for existing scan history. They are not the public product name. A future protocol-major migration can introduce new identifiers with an explicit data migration path.
-
-Canonical naming and compatibility boundaries are recorded in [`docs/brand.md`](./docs/brand.md).
+Canonical naming is recorded in [`docs/brand.md`](./docs/brand.md).
 
 The ArchScope bundle also mounts the official DeepSeek Harness `@deepseek-ai/dsh-mcp-client` and starts `codebase-memory-mcp` over stdio. Before starting DSH, make sure that executable is available on `PATH`:
 

@@ -30,13 +30,10 @@ export function createStatusMessage(status: ArchScopeStatusResult): string {
   ].join('\n')
 }
 
-export function createStatusTool(
-  service: ArchScopeService,
-  name: 'archscope_status' | 'kantu_status' = 'archscope_status',
-) {
+export function createStatusTool(service: ArchScopeService) {
   return defineTool({
-    name,
-    description: `${name.startsWith('kantu_') ? '[Deprecated alias] ' : ''}Inspect a persisted ArchScope scan run. Omit runId to inspect the latest run.`,
+    name: 'archscope_status',
+    description: 'Inspect a persisted ArchScope scan run. Omit runId to inspect the latest run.',
     parameters: {
       runId: { type: 'string', description: 'Optional ArchScope run id.' },
     },

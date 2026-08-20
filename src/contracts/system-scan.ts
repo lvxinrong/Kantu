@@ -1,5 +1,5 @@
-export const SYSTEM_SCAN_PROTOCOL = 'kantu/system-scan/v1'
-export const SYSTEM_DOCUMENT_PROTOCOL = 'kantu/contract/system-document/v1'
+export const SYSTEM_SCAN_PROTOCOL = 'archscope/system-scan/v1'
+export const SYSTEM_DOCUMENT_PROTOCOL = 'archscope/contract/system-document/v1'
 
 export interface ProtocolRunReference {
   packId: string
@@ -181,6 +181,3 @@ export interface ArchScopeStatusResult {
   scopeViolationCount: number
   outputDirectory: string
 }
-
-/** @deprecated Use ArchScopeStatusResult. */
-export type KantuStatusResult = ArchScopeStatusResult

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { apply } from '../src/index.js'
 
 describe('ArchScope plugin registration', () => {
-  it('registers ArchScope interaction surfaces and deprecated aliases', () => {
+  it('registers only the canonical ArchScope interaction surfaces', () => {
     const tools: ToolDefinition[] = []
     const commands: CommandDefinition[] = []
     const ctx = new Context().extend({
@@ -30,21 +30,16 @@ describe('ArchScope plugin registration', () => {
     })
 
     apply(ctx, {
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: true,
       registerSystemScanTool: true,
       registerStatusTool: true,
     })
 
-    expect(commands.map(command => command.name)).toEqual(['archscope', 'kantu'])
+    expect(commands.map(command => command.name)).toEqual(['archscope'])
     expect(commands[0]?.input?.hint).toContain('system')
-    expect(tools.map(tool => tool.name).sort()).toEqual([
-      'archscope_scan_system',
-      'archscope_status',
-      'kantu_scan_system',
-      'kantu_status',
-    ])
+    expect(tools.map(tool => tool.name).sort()).toEqual(['archscope_scan_system', 'archscope_status'])
   })
 
   it('can disable both interaction surfaces through config', () => {
@@ -52,15 +47,13 @@ describe('ArchScope plugin registration', () => {
 
     apply(ctx, {
       workspaceRoot: '.',
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
       discoveryMaxDepth: 3,
       registerCommand: false,
       registerSystemScanTool: false,
       registerStatusTool: false,
-      registerLegacyAliases: false,
     })
 
     expect(ctx.archscope).toBeDefined()
-    expect(ctx.kantu).toBeUndefined()
   })
 })

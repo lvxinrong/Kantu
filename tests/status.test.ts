@@ -14,11 +14,11 @@ describe('createStatusMessage', () => {
       indexedProjectCount: 0,
       evidenceProjectCount: 0,
       scopeViolationCount: 0,
-      outputDirectory: '.kantu/artifacts',
+      outputDirectory: '.archscope/artifacts',
     })
 
     expect(message).toContain('No ArchScope run was found')
-    expect(message).toContain('.kantu/artifacts')
+    expect(message).toContain('.archscope/artifacts')
   })
 
   it('puts the scan outcome before run metadata', () => {
@@ -32,7 +32,7 @@ describe('createStatusMessage', () => {
       indexedProjectCount: 2,
       evidenceProjectCount: 1,
       scopeViolationCount: 0,
-      outputDirectory: 'kantu_docs',
+      outputDirectory: 'archscope_docs',
     })
 
     expect(message.split('\n')[0]).toBe(

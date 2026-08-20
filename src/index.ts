@@ -14,15 +14,11 @@ export type * from './intents.js'
 export type * from './contracts/system-scan.js'
 export {
   ARCHSCOPE_COMMAND_HELP,
-  KANTU_COMMAND_HELP,
   createArchScopeCommand,
-  createKantuCommand,
   executeArchScopeIntent,
-  executeKantuIntent,
   parseArchScopeCommand,
-  parseKantuCommand,
 } from './commands/archscope.js'
-export { ArchScopeService, KantuService } from './service.js'
+export { ArchScopeService } from './service.js'
 export { loadProtocolPack, parseProtocolContract, protocolResource } from './protocol/catalog.js'
 export type * from './protocol/catalog.js'
 export { markdownHeadings, metadataValues, validateSystemDocument } from './protocol/validation.js'
@@ -43,19 +39,14 @@ export function apply(ctx: Context, config: ArchScopeConfig): void {
       commandCtx.commands.register(
         createArchScopeCommand(service),
       )
-      if (config.registerLegacyAliases !== false) {
-        commandCtx.commands.register(createArchScopeCommand(service, 'kantu'))
-      }
     })
   }
 
   if (config.registerSystemScanTool) {
     ctx.tools.register(createSystemScanTool(service))
-    if (config.registerLegacyAliases !== false) ctx.tools.register(createSystemScanTool(service, 'kantu_scan_system'))
   }
 
   if (config.registerStatusTool) {
     ctx.tools.register(createStatusTool(service))
-    if (config.registerLegacyAliases !== false) ctx.tools.register(createStatusTool(service, 'kantu_status'))
   }
 }

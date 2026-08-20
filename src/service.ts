@@ -23,8 +23,6 @@ import { discoverProjects } from './system/discovery.js'
 declare module '@deepseek-ai/cordis' {
   interface Context {
     archscope: ArchScopeService
-    /** @deprecated Use ctx.archscope. */
-    kantu?: ArchScopeService
   }
 }
 
@@ -77,7 +75,6 @@ export class ArchScopeService extends Service {
 
   constructor(ctx: Context, private readonly config: Config, analyzer?: SystemAnalyzer) {
     super(ctx, 'archscope')
-    if (config.registerLegacyAliases !== false) ctx.reflect.provide('kantu', this)
     this.analyzer = analyzer ?? new DshSystemAnalyzer(ctx, config)
   }
 
@@ -307,6 +304,3 @@ export class ArchScopeService extends Service {
     }
   }
 }
-
-/** @deprecated Use ArchScopeService. */
-export { ArchScopeService as KantuService }

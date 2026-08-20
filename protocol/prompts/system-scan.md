@@ -1,6 +1,6 @@
 # System scan instruction
 
-Build only the system-level fact base for the configured workspace. Follow the contracts and policies in `kantu/protocol/system/v1`; do not infer production state from source code and do not enter project, module, or code-level analysis.
+Build only the system-level fact base for the configured workspace. Follow the contracts and policies in `archscope/protocol/system/v1`; do not infer production state from source code and do not enter project, module, or code-level analysis.
 
 Required sequence:
 

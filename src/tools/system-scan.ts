@@ -21,13 +21,10 @@ export function createSystemScanMessage(result: SystemScanResult): string {
   ].join('\n')
 }
 
-export function createSystemScanTool(
-  service: ArchScopeService,
-  name: 'archscope_scan_system' | 'kantu_scan_system' = 'archscope_scan_system',
-) {
+export function createSystemScanTool(service: ArchScopeService) {
   return defineTool({
-    name,
-    description: `${name.startsWith('kantu_') ? '[Deprecated alias] ' : ''}Run the full ArchScope source-level system scan: discover Git projects, prepare independent code indexes, collect isolated evidence, synthesize the system fact base, and validate the downstream gate. This never claims runtime or production facts without evidence.`,
+    name: 'archscope_scan_system',
+    description: 'Run the full ArchScope source-level system scan: discover Git projects, prepare independent code indexes, collect isolated evidence, synthesize the system fact base, and validate the downstream gate. This never claims runtime or production facts without evidence.',
     parameters: {
       refresh: { type: 'boolean', description: 'Create a fresh run instead of reusing the latest reusable system scan.' },
     },

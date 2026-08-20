@@ -9,7 +9,7 @@ import { createProjectKey, discoverProjects } from '../src/system/discovery.js'
 const temporaryRoots: string[] = []
 
 async function temporaryWorkspace(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), 'kantu-discovery-'))
+  const root = await mkdtemp(path.join(tmpdir(), 'archscope-discovery-'))
   temporaryRoots.push(root)
   return root
 }
@@ -33,7 +33,7 @@ describe('discoverProjects', () => {
     await writeFile(path.join(first, 'pom.xml'), '<project />')
     await writeFile(path.join(second, 'package.json'), JSON.stringify({ dependencies: { express: '1.0.0' } }))
 
-    const result = await discoverProjects({ root, maxDepth: 3, outputDirectory: 'kantu_docs' })
+    const result = await discoverProjects({ root, maxDepth: 3, outputDirectory: 'archscope_docs' })
 
     expect(result.projects).toHaveLength(2)
     expect(new Set(result.projects.map(project => project.projectKey)).size).toBe(2)
@@ -49,7 +49,7 @@ describe('discoverProjects', () => {
     await gitRoot(path.join(project, 'nested'))
     await symlink(project, path.join(root, 'project-link'))
 
-    const result = await discoverProjects({ root, maxDepth: 4, outputDirectory: 'kantu_docs' })
+    const result = await discoverProjects({ root, maxDepth: 4, outputDirectory: 'archscope_docs' })
 
     expect(result.projects.map(item => item.projectDir)).toEqual(['project'])
   })
@@ -58,7 +58,7 @@ describe('discoverProjects', () => {
     const root = await temporaryWorkspace()
     await gitRoot(root)
 
-    const result = await discoverProjects({ root, maxDepth: 3, outputDirectory: 'kantu_docs' })
+    const result = await discoverProjects({ root, maxDepth: 3, outputDirectory: 'archscope_docs' })
 
     expect(result.projects).toHaveLength(1)
     expect(result.projects[0]?.projectDir).toBe('.')
