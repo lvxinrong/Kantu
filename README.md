@@ -43,7 +43,7 @@ ArchScope does not let multiple agents independently interpret a system without 
 
 ### Let models reason; let programs enforce discipline
 
-Models handle judgment and synthesis. Deterministic programs handle state machines, task plans, contract validation, identity resolution, batch recovery, and sensitive-data checks.
+Models handle judgment and synthesis. Deterministic programs handle state machines, task plans, contract validation, identity resolution, batch recovery, exact relation statistics, portable-path checks, and credential-secret checks.
 
 ### Multi-repository from day one
 
@@ -78,7 +78,7 @@ flowchart LR
     D --> F["Module studies"]
     D --> G["Code traces"]
     C -. "fact inheritance" .-> D
-    H["Evidence and redaction rules"] -.-> C
+    H["Evidence fidelity and credential rules"] -.-> C
     H -.-> D
     I["Contracts, gates, and validation"] -.-> C
     I -.-> D
@@ -121,15 +121,16 @@ For deterministic, scriptable control, the same intents use one strict command n
 
 ```text
 /archscope system [--refresh]
-/archscope project <project-key> [--refresh]
-/archscope status [run-id]
-/archscope resume [run-id]
 /archscope help
 ```
 
-Chinese subcommand aliases are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. `system` performs discovery, independent indexing, and per-project evidence collection, then hands the run to the current DSH main agent. The main agent loads the complete system protocol and structured evidence, synthesizes the fact base and three diagrams, and submits them for deterministic validation. Progress and quarter milestones remain visible in the main conversation. A first scan—or a run with `--refresh`—can take substantial time; a normal run reuses indexes matched by the project's exact absolute root. Completed runs, and compatible runs awaiting main-agent synthesis, can be reused; `BLOCKED` runs are retried.
+The Chinese aliases `系统级扫描` and `帮助` are also accepted. Slash-command input is parsed strictly and never guessed; invalid input returns usage guidance. `system` performs discovery, independent indexing, and per-project evidence collection, then hands the run to the current DSH main agent. The main agent loads the complete system protocol and structured evidence, synthesizes the fact base and three diagrams, and submits them for deterministic validation. Progress and quarter milestones remain visible in the main conversation. A first scan—or a run with `--refresh`—can take substantial time; a normal run reuses indexes matched by the project's exact absolute root. Completed runs, and compatible runs awaiting main-agent synthesis, can be reused; `BLOCKED` runs are retried instead of permanently caching failure.
 
-The project gate can become `READY` once source-level indexes and evidence are complete. This does not claim that the production topology has been confirmed. Missing MCP tools, failed indexes, failed workers, or scope violations keep the gate `BLOCKED`. `system`, `status`, and `help` are runnable; `project` and `resume` remain reserved and fail closed until their workflows exist.
+DeepSeek Harness currently does not dispatch Slash Commands from a completely blank new session. Select an existing session, or send a normal message to create the session before running `/archscope`. The command candidate itself displays this limitation so a silent first interaction is less surprising.
+
+`/archscope` and `/archscope help` publish the guide back into the conversation as a normal assistant response. The command result itself stays empty, avoiding a long help document that looks like a tool or thinking card.
+
+The project gate can become `READY` once source-level indexes and evidence are complete. This does not claim that the production topology has been confirmed. Missing MCP tools, failed indexes, failed workers, or scope violations keep the gate `BLOCKED`. `system` and `help` are the current public Slash Commands. Project scans and resume remain reserved internally and are not advertised until their workflows exist. Machine-readable status remains available to model orchestration through `archscope_status` rather than as a manual slash subcommand.
 
 The planned model-facing surface will grow around capabilities like these:
 
@@ -160,9 +161,11 @@ archscope_docs/
 │   ├── evidence/
 │   │   ├── index.json
 │   │   └── <project-key>.json
+│   ├── relations.json
 │   ├── protocol-lock.json
 │   ├── synthesis.json
 │   ├── validation.json
+│   ├── history.json
 │   └── diagrams/
 │       ├── 01-system-context.mmd
 │       ├── 02-internal-relations.mmd
@@ -171,6 +174,10 @@ archscope_docs/
 │   ├── latest.json
 │   └── <run-id>/
 │       ├── state.json
+│       ├── system/                    # immutable terminal snapshot
+│       │   ├── 00-system-fact-base.md
+│       │   ├── evidence/
+│       │   └── diagrams/
 │       └── synthesis/
 │           └── attempt-<n>/
 │               ├── attempt.json
@@ -178,15 +185,17 @@ archscope_docs/
 │               └── diagrams/
 ```
 
-Each project's raw structured evidence is written separately before the current DSH main agent synthesizes the fact base. Parallel workers never compete to write the document or consume one another's output. When a large evidence bundle is bounded, the writer can selectively retrieve complete persisted evidence for one to eight high-impact project keys without receiving filesystem or code-search access. The main agent owns cross-project understanding, terminology, relationship judgment, conflict arbitration, and final prose; deterministic regex and name matching remain candidates rather than final conclusions.
+`system/` always represents the latest validated, published fact base. A fresh scan stages all registry, index, and evidence files below its own `runs/<run-id>/system/`, so an in-progress or failed run cannot erase the previous usable documents. Each terminal synthesis receives a monotonic document revision such as `S0001`; terminal snapshots and every synthesis attempt are retained by default. `system/history.json` links revisions to run ids, validation and gate states, immutable artifact roots, and the revision currently published under `system/`.
 
-ArchScope records the writer session, model, and input/output digests in `system/synthesis.json`, and preserves every submitted draft plus its validation report under the run's `synthesis/attempt-<n>/` directory. It validates Markdown and Mermaid artifacts for structure, evidence boundaries, complete internal domains, raw data-asset identifiers, explicit diagram edge semantics, and agreement between active project blockers and the downstream gate. Route, symbol, configuration, and implementation details remain in per-project evidence JSON. With complete source evidence and no active project-level blocker, the document may be marked complete for the source view and the project gate may open; runtime facts remain explicitly unconfirmed.
+Each project's raw structured evidence is written separately before the current DSH main agent synthesizes the fact base. Parallel workers never compete to write the document or consume one another's output. In `auto` mode, evidence up to 512 KiB is injected in full; larger bundles use a bounded representation and allow the writer to selectively retrieve complete persisted evidence for one to eight high-impact project keys without receiving filesystem or code-search access. Independently, every worker emits typed relation candidates and ArchScope persists their complete, untruncated aggregate in `system/relations.json`, which is always injected into synthesis. The main agent owns cross-project understanding, terminology, relationship judgment, conflict arbitration, and final prose; deterministic regex and name matching remain candidates rather than final conclusions.
 
-Code definitions, routes, and call relationships remain codebase-memory-first. For manifests, READMEs, CI, containers, and deployment configuration that graphs often miss, ArchScope collects a bounded metadata baseline in the parent process with project-root containment, symlink rejection, file and aggregate size limits, and sensitive-value redaction before model injection. Evidence workers do not receive arbitrary filesystem reads, shell access, or write capabilities.
+ArchScope records the writer session, model, and input/output digests in `system/synthesis.json`, and preserves every submitted draft plus its validation report under the run's `synthesis/attempt-<n>/` directory. It validates Markdown and Mermaid artifacts for structure, evidence boundaries, exact agreement with machine-owned relation statistics, portable paths, credential leakage, explicit diagram edge semantics, and agreement between active project blockers and the downstream gate. Route, symbol, configuration, and implementation details remain in per-project evidence JSON. With complete source evidence and no active project-level blocker, the document may be marked complete for the source view and the project gate may open; runtime facts remain explicitly unconfirmed.
+
+Code definitions, routes, and call relationships remain codebase-memory-first. For manifests, READMEs, CI, containers, and deployment configuration that graphs often miss, ArchScope collects a bounded metadata baseline in the parent process with project-root containment, symlink rejection, file and aggregate size limits, and credential-value removal before model injection. Local fact artifacts preserve real service names, domains, IPs, routes, tables, topics, queues, and other architecture identifiers. Evidence workers do not receive arbitrary filesystem reads, shell access, or write capabilities.
 
 ### System Protocol Pack
 
-ArchScope ships system-level analysis knowledge as a versioned `protocol/` directory. The pack contains machine contracts for evidence, project identity, index state, the 22-section system document, and layer gates; Markdown policies for analysis boundaries, redaction, output paths, and validation; a complete system-writer instruction that is actually injected into the current DSH main agent; and a focused prompt for read-only evidence workers.
+ArchScope ships system-level analysis knowledge as a versioned `protocol/` directory. The pack contains machine contracts for evidence, project identity, index state, the 22-section system document, and layer gates; Markdown policies for analysis boundaries, local fact fidelity and credential handling, output paths, and validation; a complete system-writer instruction that is actually injected into the current DSH main agent; and a focused prompt for read-only evidence workers.
 
 The plugin loads and validates this catalog at runtime. Every scan writes `system/protocol-lock.json` with the pack version plus SHA-256 digests for the manifest and every resource. A changed pack therefore creates a new run instead of silently reusing results produced under different rules. Script-worthy invariants are implemented in TypeScript and tested; the Markdown remains inspectable protocol content, not an unenforced appendix.
 
@@ -201,6 +210,8 @@ The plugin loads and validates this catalog at runtime. Every scan writes `syste
 | `indexMode` | `moderate` | `fast`, `moderate`, or `full` mode for new or refreshed indexes |
 | `evidenceProvider` | `spawn` | DSH subagent provider for isolated read-only evidence workers |
 | `systemConcurrency` | `4` | Maximum concurrent index and evidence tasks |
+| `evidenceContextMode` | `auto` | `auto` uses full evidence within the byte limit, `full` always injects it, and `bounded` always compacts it |
+| `fullEvidenceMaxBytes` | `524288` | UTF-8 byte limit for full evidence injection in `auto` mode |
 | `registerCommand` | `true` | Register the optional `/archscope` command |
 | `registerSystemScanTool` | `true` | Register `archscope_scan_system` |
 | `registerStatusTool` | `true` | Register `archscope_status` |
@@ -270,7 +281,8 @@ Being indexed by the topic does not imply endorsement by DeepSeek. ArchScope tre
 - **Deterministic gates:** Rules that programs can decide should not depend on a model remembering to comply.
 - **Context isolation:** Project and module tasks receive only the context required to complete their responsibility.
 - **Recoverable execution:** Long-running, multi-project scans expose status, preserve failures, and resume after interruption.
-- **Safe defaults:** ArchScope does not modify business code or expose secrets, tokens, passwords, private keys, or complete sensitive endpoints by default.
+- **Local fact fidelity:** Default artifacts preserve architecture identifiers exactly; later share-safe export must create a derived copy rather than rewrite the fact base.
+- **Safe defaults:** ArchScope does not modify business code or expose secrets, tokens, passwords, private keys, API keys, or embedded credentials.
 - **Replaceable models and tools:** The core protocol does not depend on one model, index engine, or code-search tool.
 
 ## What ArchScope is not
@@ -316,6 +328,7 @@ ArchScope aims to provide a more trustworthy starting point and a path for analy
 - [ ] Third-party project types and report Profiles
 - [ ] Custom evidence sources and organization policy packs
 - [ ] Headless, Web, and automation workflow integration
+- [ ] Share-safe/public export command that derives a redacted copy without changing local fact artifacts
 - [ ] Publish a prebuilt npm bundle and verify standard installation and removal
 - [ ] Add the `dsh-plugin` GitHub topic and verify that ArchScope appears in the ecosystem discovery entry point
 

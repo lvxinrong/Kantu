@@ -10,6 +10,7 @@ import {
   type ProjectRegistry,
   type ProjectSystemEvidence,
   type SystemEvidenceBundle,
+  type SystemRelationCatalog,
   type SystemSynthesisDraft,
   type SystemSynthesisRecord,
   type SystemValidationReport,
@@ -17,7 +18,8 @@ import {
   type ValidationIssue,
 } from '../contracts/system-scan.js'
 import type { LoadedProtocolPack, ProtocolLock } from '../protocol/catalog.js'
-import { activeProjectBlockers, validateSensitiveContent, validateSystemDocument } from '../protocol/validation.js'
+import { activeProjectBlockers, validatePortableContent, validateSensitiveContent, validateSystemDocument } from '../protocol/validation.js'
+import { buildSystemRelationCatalog, systemRelationMetricValues, systemRelationMetrics, validateSystemRelationCatalog } from './relations.js'
 
 function markdownCell(value: string | number | null): string {
   if (value === null || value === '') return '待确认'
@@ -146,9 +148,11 @@ const SYSTEM_ARTIFACT_PATHS = [
   'system/project-registry.json',
   'system/index-manifest.json',
   'system/evidence/index.json',
+  'system/relations.json',
   'system/protocol-lock.json',
   'system/validation.json',
   'system/synthesis.json',
+  'system/history.json',
   'system/diagrams/01-system-context.mmd',
   'system/diagrams/02-internal-relations.mmd',
   'system/diagrams/03-entry-overview.mmd',
@@ -169,16 +173,34 @@ function replaceMetadataValue(content: string, key: string, value: string): stri
   return content.replace(new RegExp(`(^\\|\\s*${escaped}\\s*\\|)\\s*[^|]*\\|`, 'mu'), `$1 ${value} |`)
 }
 
+function upsertMetadataValue(content: string, key: string, value: string, afterKey: string): string {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  if (new RegExp(`^\\|\\s*${escaped}\\s*\\|`, 'mu').test(content)) return replaceMetadataValue(content, key, value)
+  const escapedAfter = afterKey.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  return content.replace(
+    new RegExp(`(^\\|\\s*${escapedAfter}\\s*\\|[^\\n]*$)`, 'mu'),
+    `$1\n| ${key} | ${value} | 由 ArchScope 根据 relations.json 确定性写入 |`,
+  )
+}
+
 function normalizeSystemMetadata(
   content: string,
   validation: Pick<SystemValidationReport, 'status' | 'gate'>,
   sourceComplete: boolean,
+  documentRevision: string,
+  relationMetrics: Record<string, string>,
 ): string {
   let normalized = replaceMetadataValue(content, '协议版本', SYSTEM_DOCUMENT_PROTOCOL)
+  normalized = replaceMetadataValue(normalized, '事实版本', documentRevision)
   normalized = replaceMetadataValue(normalized, '文档状态', validation.status === 'PASSED' && sourceComplete ? '完整' : '草稿')
   normalized = replaceMetadataValue(normalized, '证据状态', sourceComplete ? '源码视角已完成，运行态待确认' : '证据不足')
   normalized = replaceMetadataValue(normalized, '下层门禁', validation.gate)
   normalized = replaceMetadataValue(normalized, '校验状态', validation.status)
+  let anchor = '校验状态'
+  for (const [key, value] of Object.entries(relationMetrics)) {
+    normalized = upsertMetadataValue(normalized, key, value, anchor)
+    anchor = key
+  }
   return replaceMetadataValue(normalized, '项目级门禁', validation.gate)
 }
 
@@ -197,6 +219,7 @@ function validateSynthesisDiagrams(diagrams: SystemSynthesisDraft['diagrams'], p
       issues.push({ severity: 'ERROR', code: 'SYSTEM_DIAGRAM_LEGEND_MISSING', message: `${name} must explain source-evidence, pending-inference, and production-runtime edge semantics.` })
     }
     issues.push(...validateSensitiveContent(content, pack, `${name} diagram`))
+    issues.push(...validatePortableContent(content, `${name} diagram`))
   }
   return issues
 }
@@ -205,11 +228,15 @@ export function prepareSynthesizedSystemArtifacts(
   registry: ProjectRegistry,
   indexes: IndexManifest,
   evidence: SystemEvidenceBundle,
+  relations: SystemRelationCatalog,
   generatedAt: string,
   pack: LoadedProtocolPack,
   draft: SystemSynthesisDraft,
+  documentRevision = 'PENDING',
 ): PreparedSynthesizedSystemArtifacts {
   const initial = validateSystemArtifacts(registry, indexes, generatedAt, evidence)
+  const relationIssues = validateSystemRelationCatalog(registry, relations, evidence)
+  const relationMetrics = systemRelationMetricValues(relations)
   const protocol = { packId: pack.lock.packId, version: pack.lock.version, digest: pack.lock.packDigest }
   const sourceComplete = registry.projects.length > 0
     && indexes.records.length === registry.projects.length
@@ -217,19 +244,19 @@ export function prepareSynthesizedSystemArtifacts(
     && evidence.records.length === registry.projects.length
     && evidence.records.every(record => record.status === 'COLLECTED' && record.scopeStatus === 'CLEAN' && record.scopeViolations.length === 0)
   const semanticGate: GateStatus = initial.gate === 'READY' && activeProjectBlockers(draft.factBase).length === 0 ? 'READY' : 'BLOCKED'
-  let factBase = normalizeSystemMetadata(draft.factBase, { status: 'PASSED', gate: semanticGate }, sourceComplete)
+  let factBase = normalizeSystemMetadata(draft.factBase, { status: 'PASSED', gate: semanticGate }, sourceComplete, documentRevision, relationMetrics)
   const diagramIssues = validateSynthesisDiagrams(draft.diagrams, pack)
-  let documentIssues = validateSystemDocument(factBase, SYSTEM_ARTIFACT_PATHS, pack)
-  let issues = [...initial.issues, ...documentIssues, ...diagramIssues]
+  let documentIssues = validateSystemDocument(factBase, SYSTEM_ARTIFACT_PATHS, pack, { relationMetrics })
+  let issues = [...initial.issues, ...relationIssues, ...documentIssues, ...diagramIssues]
   let status: ValidationStatus = issues.some(issue => issue.severity === 'ERROR') ? 'FAILED' : 'PASSED'
   let gate: GateStatus = status === 'PASSED' ? semanticGate : 'BLOCKED'
-  factBase = normalizeSystemMetadata(draft.factBase, { status, gate }, sourceComplete)
-  documentIssues = validateSystemDocument(factBase, SYSTEM_ARTIFACT_PATHS, pack)
-  issues = [...initial.issues, ...documentIssues, ...diagramIssues]
+  factBase = normalizeSystemMetadata(draft.factBase, { status, gate }, sourceComplete, documentRevision, relationMetrics)
+  documentIssues = validateSystemDocument(factBase, SYSTEM_ARTIFACT_PATHS, pack, { relationMetrics })
+  issues = [...initial.issues, ...relationIssues, ...documentIssues, ...diagramIssues]
   status = issues.some(issue => issue.severity === 'ERROR') ? 'FAILED' : 'PASSED'
   gate = status === 'PASSED' ? semanticGate : 'BLOCKED'
   const validation: SystemValidationReport = { ...initial, protocol, status, gate, issues }
-  factBase = normalizeSystemMetadata(draft.factBase, validation, sourceComplete)
+  factBase = normalizeSystemMetadata(draft.factBase, validation, sourceComplete, documentRevision, relationMetrics)
   return { factBase, diagrams: draft.diagrams, validation, protocolLock: pack.lock }
 }
 
@@ -492,6 +519,9 @@ export function renderSystemFactBase(
   const rawEntries = collected.reduce((count, record) => count + record.entries.length, 0)
   const rawCapabilities = collected.reduce((count, record) => count + record.capabilityCandidates.length, 0)
   const rawDataAssets = collected.reduce((count, record) => count + record.dataAssets.length, 0)
+  const relationCatalog = buildSystemRelationCatalog(registry, evidence)
+  const relationMachineValues = systemRelationMetricValues(relationCatalog)
+  const relationCatalogMetrics = systemRelationMetrics(relationCatalog)
   const relations = dependencyRelations(registry, evidence)
   const internalRelations = relations.filter(relation => relation.internal)
   const externalRelations = relations.filter(relation => !relation.internal)
@@ -522,13 +552,13 @@ export function renderSystemFactBase(
   const registryValid = registry.projectCount === registry.projects.length
     && new Set(registry.projects.map(project => project.projectKey)).size === registry.projects.length
     && registry.projects.every(project => !path.isAbsolute(project.projectDir) && !project.projectDir.split('/').includes('..'))
-  const redactionPassed = !validation.issues.some(issue => issue.code === 'SENSITIVE_VALUE_DETECTED')
+  const secretValuesPassed = !validation.issues.some(issue => issue.code === 'SENSITIVE_VALUE_DETECTED')
   const semanticBoundaryPassed = !validation.issues.some(issue => issue.code === 'SYSTEM_BOUNDARY_EXCEEDED'
     || issue.code === 'SYSTEM_DOCUMENT_TOO_LARGE' || issue.code === 'SYSTEM_SECTION_TOO_DETAILED')
   const coverageScore = registry.projects.length === 0 ? 0 : complete ? 5 : Math.max(1, Math.floor(5 * collected.length / registry.projects.length))
   const entryScore = externalEntryProjects.size === 0 ? 0 : complete ? 3 : 1
-  const relationScore = relations.length === 0 ? 0 : complete ? 3 : 1
-  const externalScore = externalRelations.length === 0 ? 0 : complete ? 3 : 1
+  const relationScore = relationCatalogMetrics.internalCount === 0 ? 0 : complete ? 3 : 1
+  const externalScore = relationCatalogMetrics.unresolvedCount === 0 ? 0 : complete ? 3 : 1
   const dataScore = dataThemes.length === 0 ? 0 : complete ? 3 : 1
   const indexStatuses = ['FRESH', 'PENDING', 'FAILED'].map(status => ({ status, count: indexes.records.filter(record => record.status === status).length }))
   const highPriority = new Set([
@@ -543,17 +573,24 @@ export function renderSystemFactBase(
 
 ## 0. 文档边界说明
 
-本文件由 ArchScope 系统级扫描生成，目标是建立跨工程的系统世界观，而不是拼接工程画像。扫描已执行真实 Git 工程发现、独立代码智能索引和按工程隔离的只读证据采集。源码存在不代表生产启用；生产边界、生产入口、实际调用和数据归属仍需运行态材料或人工确认。主文档只保留跨工程聚合结论；${rawEntries} 条原始入口证据、${rawCapabilities} 条原始能力证据、${rawDataAssets} 条原始数据证据及全部冲突完整保存在 system/evidence/index.json 与 system/evidence/<projectKey>.json。
+本文件由 ArchScope 系统级扫描生成，目标是建立跨工程的系统世界观，而不是拼接工程画像。扫描已执行真实 Git 工程发现、独立代码智能索引和按工程隔离的只读证据采集。源码存在不代表生产启用；生产边界、生产入口、实际调用和数据归属仍需运行态材料或人工确认。主文档只保留跨工程聚合结论；${rawEntries} 条原始入口证据、${rawCapabilities} 条原始能力证据、${rawDataAssets} 条原始数据证据及全部冲突完整保存在 system/evidence/index.json 与 system/evidence/<projectKey>.json，未裁剪的结构化关系候选保存在 system/relations.json。
 
 | 契约字段 | 值 | 说明 |
 |---|---|---|
 | 协议版本 | ${SYSTEM_DOCUMENT_PROTOCOL} | 固定值 |
+| 事实版本 | PENDING | 由 ArchScope 在最终提交时分配 |
 | 扫描协议 | ${SYSTEM_SCAN_PROTOCOL} | ArchScope 运行协议 |
 | 工程发现最大深度 | ${registry.discoveryMaxDepth} | Git 根在该深度内被发现 |
 | 文档状态 | ${complete ? '完整' : '草稿'} | ${complete ? '源码视角系统事实已综合' : '索引、证据或校验仍有阻断项'} |
 | 证据状态 | ${sourceComplete ? '源码视角已完成，运行态待确认' : '证据不足'} | 代码图谱与安全元数据证据不替代运行态确认 |
 | 下层门禁 | ${validation.gate} | ${validation.gate === 'READY' ? '允许用户主动进入项目级分析' : '不允许进入项目级正式分析'} |
-| 校验状态 | ${validation.status} | 同时校验结构、证据覆盖、语义边界、门禁与脱敏 |
+| 校验状态 | ${validation.status} | 同时校验结构、证据覆盖、机器关系统计、语义边界、门禁、便携路径与秘密值 |
+| 关系候选总数 | ${relationMachineValues['关系候选总数']} | 由 ArchScope 根据 relations.json 确定性写入 |
+| 内部关系数 | ${relationMachineValues['内部关系数']} | 由 ArchScope 根据 relations.json 确定性写入 |
+| 未解析关系数 | ${relationMachineValues['未解析关系数']} | 由 ArchScope 根据 relations.json 确定性写入 |
+| 内部关系构成 | ${relationMachineValues['内部关系构成']} | 由 ArchScope 根据 relations.json 确定性写入 |
+| 未解析关系构成 | ${relationMachineValues['未解析关系构成']} | 由 ArchScope 根据 relations.json 确定性写入 |
+| 关系类型构成 | ${relationMachineValues['关系类型构成']} | 由 ArchScope 根据 relations.json 确定性写入 |
 | 输出目录 | ${markdownCell(path.dirname('system/00-system-fact-base.md'))} | 相对于 ArchScope 输出根目录 |
 
 ## 1. 当前目录性质
@@ -600,7 +637,7 @@ ${infrastructureThemes.length === 0 ? '| 待确认 | 当前未形成跨工程基
 |---|---|---|
 | 外部用户入口 | ${externalSurfaces.length === 0 ? '待确认' : externalSurfaces.map(surface => `${surface.name}（${surface.projects.length}）`).join('、')} | 仅确认承载工程形态 |
 | 服务/API 边界 | ${serviceSurfaces.length === 0 ? '待确认' : serviceSurfaces.map(surface => `${surface.name}（${surface.projects.length}）`).join('、')} | 不把 Controller 或方法清单上卷为系统入口 |
-| 跨工程连接 | ${internalRelations.length} 条源码候选 | 名称匹配需要项目级或运行态复核 |
+| 跨工程连接 | ${relationCatalogMetrics.internalCount} 条源码候选 | 完整关系见 system/relations.json，运行态待复核 |
 | 数据与基础设施 | ${dataThemes.length} 类数据候选、${infrastructureThemes.length} 类基础设施候选 | 实例、拓扑与归属待运行态确认 |
 
 ## 8. 系统能力地图（技术视角）
@@ -645,7 +682,7 @@ ${aliasRecords.length === 0 ? '| 待确认 | 工程 | 待确认 | 暂以仓库�
 | 工程形态分布：${markdownCell(projectTypeDistribution(registry.projects, evidence))} | 构建标记与工程分类 | 工程类型不等于业务归属 |
 | 用户入口形态候选覆盖 ${externalEntryProjects.size} 个工程：${externalSurfaces.length === 0 ? '待确认' : externalSurfaces.map(surface => surface.name).join('、')} | 工程类型与入口证据聚合 | 实际生产入口、域名和流量待确认 |
 | 形成 ${capabilityThemes.length} 个跨工程能力主题候选：${capabilityThemes.length === 0 ? '待确认' : capabilityThemes.slice(0, 6).map(theme => theme.name).join('、')} | ${rawCapabilities} 条工程能力证据聚合 | 业务边界与能力归属待人工确认 |
-| 形成 ${internalRelations.length} 条跨工程依赖候选${relationHubs.length === 0 ? '' : `；关系中心候选为 ${relationHubs.map(([name, degree]) => `${name}（${degree}）`).join('、')}`} | 出站依赖与工作区工程名匹配 | 不是运行态调用链，需项目级或运行态复核 |
+| 形成 ${relationCatalogMetrics.internalCount} 条跨工程关系候选${relationHubs.length === 0 ? '' : `；关系中心候选为 ${relationHubs.map(([name, degree]) => `${name}（${degree}）`).join('、')}`} | 完整 relations 目录与逐工程证据 | 不是运行态调用链，需项目级或运行态复核 |
 | 共享基础设施候选包括：${infrastructureThemes.length === 0 ? '待确认' : infrastructureThemes.slice(0, 6).map(theme => theme.name).join('、')} | 工程配置与代码图谱聚合 | 实例地址、环境、拓扑和生产启用均待确认 |
 | ${freshIndexes.length}/${registry.projectCount} 个工程索引可用，${collected.length}/${registry.projectCount} 个工程完成只读取证 | index-manifest 与 evidence bundle | 表示源码覆盖，不表示生产架构已验证 |
 
@@ -680,8 +717,8 @@ ${conflictThemes.length === 0 ? '当前证据 worker 未返回显式冲突；缺
 | 工程覆盖 | ${coverageScore}/5 | Git 根、独立索引与工程证据覆盖 | 最大深度外目录和非 Git 工程不纳入 |
 | 生产边界可信度 | 0/5 | 无运行态材料 | 全部待确认 |
 | 入口链路可信度 | ${entryScore}/5 | ${externalEntryProjects.size} 个用户入口承载工程，原始工程入口证据已下沉 | 生产链路待确认 |
-| 内部关系可信度 | ${relationScore}/5 | ${internalRelations.length} 条跨工程候选 | 名称匹配与生产调用待复核 |
-| 外部依赖可信度 | ${externalScore}/5 | ${externalRelations.length} 条外部或归属待确认候选，主文档按 ${displayedExternalCallers.length} 个调用方聚合 | 系统内外边界待复核 |
+| 内部关系可信度 | ${relationScore}/5 | ${relationCatalogMetrics.internalCount} 条跨工程候选 | 名称匹配与生产调用待复核 |
+| 外部依赖可信度 | ${externalScore}/5 | ${relationCatalogMetrics.unresolvedCount} 条外部或归属待确认候选，主文档按 ${displayedExternalCallers.length} 个调用方聚合 | 系统内外边界待复核 |
 | 数据归属可信度 | ${dataScore}/5 | ${dataThemes.length} 类数据资产候选、${rawDataAssets} 条原始证据 | 写入方、读取方和归属待确认 |
 
 ## 19. 证据覆盖率摘要
@@ -692,8 +729,8 @@ ${conflictThemes.length === 0 ? '当前证据 worker 未返回显式冲突；缺
 | 生产服务 | 0 | 0 | 0 | 0 | 1 | 1 |
 | 系统入口 | ${externalEntryProjects.size} | 0 | ${externalEntryProjects.size} | 0 | ${externalEntryProjects.size === 0 ? 1 : externalEntryProjects.size} | 0 |
 | 入口链路 | ${externalSurfaces.length} | 0 | ${externalSurfaces.length} | 0 | ${externalSurfaces.length === 0 ? 1 : externalSurfaces.length} | 0 |
-| 内部关系 | ${internalRelations.length} | 0 | ${internalRelations.length} | 0 | ${internalRelations.length === 0 ? 1 : internalRelations.length} | 0 |
-| 外部依赖 | ${externalRelations.length} | 0 | ${externalRelations.length} | 0 | ${externalRelations.length === 0 ? 1 : externalRelations.length} | 0 |
+| 内部关系 | ${relationCatalogMetrics.internalCount} | ${relationCatalogMetrics.internalByStrength.DIRECT_SOURCE} | ${relationCatalogMetrics.internalByStrength.CONFIGURATION} | ${relationCatalogMetrics.internalByStrength.NAME_MATCH} | ${relationCatalogMetrics.internalCount === 0 ? 1 : relationCatalogMetrics.internalCount} | 0 |
+| 外部依赖 | ${relationCatalogMetrics.unresolvedCount} | ${relationCatalogMetrics.unresolvedByStrength.DIRECT_SOURCE} | ${relationCatalogMetrics.unresolvedByStrength.CONFIGURATION} | ${relationCatalogMetrics.unresolvedByStrength.NAME_MATCH} | ${relationCatalogMetrics.unresolvedCount === 0 ? 1 : relationCatalogMetrics.unresolvedCount} | 0 |
 | 数据资产 | ${rawDataAssets} | 0 | ${rawDataAssets} | 0 | ${rawDataAssets === 0 ? 1 : rawDataAssets} | 0 |
 
 ## 20. 系统级产物自检
@@ -703,10 +740,11 @@ ${conflictThemes.length === 0 ? '当前证据 worker 未返回显式冲突；缺
 | 工程注册表已生成 | ${registryValid ? '通过' : '不通过'} | system/project-registry.json，${registry.projectCount} 个工程 |
 | 每个工程都有索引状态 | ${indexes.records.length === registry.projectCount ? '通过' : '不通过'} | FRESH ${freshIndexes.length} / ${registry.projectCount} |
 | 每个工程都有证据状态 | ${evidence.records.length === registry.projectCount ? '通过' : '不通过'} | COLLECTED ${collected.length} / ${registry.projectCount} |
+| 完整关系目录已生成 | 通过 | system/relations.json 共 ${relationCatalogMetrics.totalCount} 条：内部 ${relationCatalogMetrics.internalCount}，未解析 ${relationCatalogMetrics.unresolvedCount}；主文档仅展示摘要 |
 | 证据范围检查 | ${collected.every(record => record.scopeStatus === 'CLEAN' && record.scopeViolations.length === 0) ? '通过' : '不通过'} | 仅统计真实越界，不接收“无违规”说明文本 |
 | 关键待确认问题已分级 | 通过 | 阻断项目级、影响生产边界、影响入口链路、影响数据归属、可延后 |
 | 证据仲裁已执行 | 通过 | 优先级：运行态、人工确认、部署发布、代码图谱、源码、历史文档；冲突保留为冲突待复核 |
-| 敏感信息已脱敏 | ${redactionPassed ? '通过' : '不通过'} | ${redactionPassed ? '未检测到账号、凭据、私钥或完整敏感端点' : '检测到疑似敏感值，详见 validation.json'} |
+| 凭据与秘密值已检查 | ${secretValuesPassed ? '通过' : '不通过'} | ${secretValuesPassed ? '未检测到密码、Token、私钥、API Key 等秘密值；架构标识按本地事实保留' : '检测到疑似秘密值，详见 validation.json'} |
 | 源码存在与生产启用已区分 | 通过 | 未生成生产启用断言 |
 | 系统级边界未越界 | ${semanticBoundaryPassed ? '通过' : '不通过'} | 主文档只保留入口形态、跨工程主题、关系摘要与冲突类别；工程细节下沉 evidence JSON |
 | 项目级门禁 | ${validation.gate === 'READY' ? '放行' : '阻断'} | ${validation.gate === 'READY' ? '源码视角系统事实已完成；仍需用户主动触发' : '索引、证据或校验存在阻断项'} |
@@ -802,28 +840,27 @@ export interface WriteSystemEvidenceArtifactsOptions {
   registry: ProjectRegistry
   indexes: IndexManifest
   evidence: SystemEvidenceBundle
+  relations: SystemRelationCatalog
   protocolLock: ProtocolLock
 }
 
-export async function writeSystemEvidenceArtifacts(options: WriteSystemEvidenceArtifactsOptions): Promise<void> {
-  const systemRoot = path.join(options.outputRoot, 'system')
+async function writeSystemEvidenceAt(systemRoot: string, options: WriteSystemEvidenceArtifactsOptions): Promise<void> {
   await Promise.all([
     atomicWriteJson(path.join(systemRoot, 'project-registry.json'), options.registry),
     atomicWriteJson(path.join(systemRoot, 'index-manifest.json'), options.indexes),
     atomicWriteJson(path.join(systemRoot, 'evidence', 'index.json'), options.evidence),
+    atomicWriteJson(path.join(systemRoot, 'relations.json'), options.relations),
     ...options.evidence.records.map(record => atomicWriteJson(path.join(systemRoot, 'evidence', `${record.projectKey}.json`), record)),
     atomicWriteJson(path.join(systemRoot, 'protocol-lock.json'), options.protocolLock),
   ])
 }
 
-export interface WriteSynthesizedSystemArtifactsOptions extends WriteSystemEvidenceArtifactsOptions, PreparedSynthesizedSystemArtifacts {
-  synthesis: SystemSynthesisRecord
+export async function writeSystemEvidenceArtifacts(options: WriteSystemEvidenceArtifactsOptions): Promise<void> {
+  await writeSystemEvidenceAt(path.join(options.outputRoot, 'system'), options)
 }
 
-export async function writeSynthesizedSystemArtifacts(options: WriteSynthesizedSystemArtifactsOptions): Promise<void> {
-  await writeSystemEvidenceArtifacts(options)
-  const systemRoot = path.join(options.outputRoot, 'system')
-  const attemptRoot = path.join(options.outputRoot, 'runs', options.synthesis.runId, 'synthesis', `attempt-${options.synthesis.attempt}`)
+async function writeSynthesizedSystemAt(systemRoot: string, options: WriteSynthesizedSystemArtifactsOptions): Promise<void> {
+  await writeSystemEvidenceAt(systemRoot, options)
   await Promise.all([
     atomicWriteJson(path.join(systemRoot, 'validation.json'), options.validation),
     atomicWriteJson(path.join(systemRoot, 'synthesis.json'), options.synthesis),
@@ -831,10 +868,29 @@ export async function writeSynthesizedSystemArtifacts(options: WriteSynthesizedS
     atomicWrite(path.join(systemRoot, 'diagrams', '01-system-context.mmd'), options.diagrams.systemContext),
     atomicWrite(path.join(systemRoot, 'diagrams', '02-internal-relations.mmd'), options.diagrams.internalRelations),
     atomicWrite(path.join(systemRoot, 'diagrams', '03-entry-overview.mmd'), options.diagrams.entryOverview),
+  ])
+}
+
+export interface WriteSynthesizedSystemArtifactsOptions extends WriteSystemEvidenceArtifactsOptions, PreparedSynthesizedSystemArtifacts {
+  synthesis: SystemSynthesisRecord
+  finalizeRevision: boolean
+  publishCurrent: boolean
+}
+
+export async function writeSynthesizedSystemArtifacts(options: WriteSynthesizedSystemArtifactsOptions): Promise<void> {
+  const attemptRoot = path.join(options.outputRoot, 'runs', options.synthesis.runId, 'synthesis', `attempt-${options.synthesis.attempt}`)
+  const writes: Array<Promise<void>> = [
     atomicWriteJson(path.join(attemptRoot, 'attempt.json'), { ...options.synthesis, validation: options.validation }),
     atomicWrite(path.join(attemptRoot, '00-system-fact-base.md'), options.factBase),
     atomicWrite(path.join(attemptRoot, 'diagrams', '01-system-context.mmd'), options.diagrams.systemContext),
     atomicWrite(path.join(attemptRoot, 'diagrams', '02-internal-relations.mmd'), options.diagrams.internalRelations),
     atomicWrite(path.join(attemptRoot, 'diagrams', '03-entry-overview.mmd'), options.diagrams.entryOverview),
-  ])
+  ]
+  if (options.finalizeRevision) {
+    writes.push(writeSynthesizedSystemAt(path.join(options.outputRoot, 'runs', options.synthesis.runId, 'system'), options))
+  }
+  if (options.publishCurrent) {
+    writes.push(writeSynthesizedSystemAt(path.join(options.outputRoot, 'system'), options))
+  }
+  await Promise.all(writes)
 }

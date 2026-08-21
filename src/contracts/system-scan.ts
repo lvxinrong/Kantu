@@ -31,6 +31,7 @@ export interface SystemScanRunState {
   protocolVersion: typeof SYSTEM_SCAN_PROTOCOL
   protocol: ProtocolRunReference
   runId: string
+  documentRevision: string
   status: SystemScanStatus
   gate: GateStatus
   validation: ValidationStatus
@@ -113,6 +114,29 @@ export interface IndexManifest {
 export type EvidenceCollectionStatus = 'COLLECTED' | 'FAILED' | 'SKIPPED'
 export type EvidenceScopeStatus = 'CLEAN' | 'VIOLATION'
 
+export type SystemRelationType =
+  | 'FEIGN_CLIENT'
+  | 'HTTP_ROUTE_FAMILY'
+  | 'MAVEN_API_DEPENDENCY'
+  | 'SDK_DEPENDENCY'
+  | 'MESSAGE_CHANNEL'
+  | 'SHARED_DATA_ASSET'
+  | 'CONFIGURED_ENDPOINT'
+  | 'NAME_MATCH_CANDIDATE'
+  | 'OTHER'
+
+export type RelationEvidenceStrength = 'DIRECT_SOURCE' | 'CONFIGURATION' | 'NAME_MATCH'
+
+export interface ProjectRelationCandidate {
+  targetAlias: string
+  targetProjectKey?: string
+  relationType: SystemRelationType
+  evidenceStrength: RelationEvidenceStrength
+  description: string
+  evidencePaths: string[]
+  runtimeStatus: 'UNCONFIRMED'
+}
+
 export interface ProjectSystemEvidence {
   projectKey: string
   projectDir: string
@@ -127,9 +151,29 @@ export interface ProjectSystemEvidence {
   capabilityCandidates: string[]
   evidencePaths: string[]
   conflicts: string[]
+  relationCandidates?: ProjectRelationCandidate[]
   scopeStatus: EvidenceScopeStatus
   scopeViolations: string[]
   failureReason?: string
+}
+
+export interface SystemRelationRecord extends ProjectRelationCandidate {
+  relationId: string
+  sourceProjectKey: string
+  sourceProjectDir: string
+  targetProjectDir?: string
+  scope: 'INTERNAL' | 'EXTERNAL_OR_UNRESOLVED'
+}
+
+export interface SystemRelationCatalog {
+  protocolVersion: typeof SYSTEM_SCAN_PROTOCOL
+  generatedAt: string
+  projectCount: number
+  projectsWithRelations: number
+  totalCount: number
+  internalCount: number
+  unresolvedCount: number
+  records: SystemRelationRecord[]
 }
 
 export interface SystemEvidenceBundle {
@@ -150,6 +194,10 @@ export interface SystemSynthesisDraft {
 export interface SystemSynthesisContext {
   runId: string
   protocolDigest: string
+  evidenceMode: 'FULL' | 'BOUNDED'
+  evidenceBytes: number
+  fullEvidenceMaxBytes: number
+  relationCount: number
   prompt: string
 }
 
@@ -171,12 +219,37 @@ export interface SystemSynthesisWriter {
 export interface SystemSynthesisRecord {
   protocolVersion: typeof SYSTEM_SCAN_PROTOCOL
   runId: string
+  documentRevision: string
+  previousRevision?: string
   generatedAt: string
   writer: SystemSynthesisWriter
   attempt: number
   protocolDigest: string
   inputDigest: string
   outputDigest: string
+}
+
+export interface SystemHistoryRevision {
+  revision: string
+  previousRevision?: string
+  runId: string
+  generatedAt: string
+  status: SystemScanStatus
+  gate: GateStatus
+  validation: ValidationStatus
+  protocol: ProtocolRunReference
+  synthesisAttempt: number
+  outputDigest: string
+  publishedAsCurrent: boolean
+  artifactRoot: string
+}
+
+export interface SystemHistoryIndex {
+  protocolVersion: typeof SYSTEM_SCAN_PROTOCOL
+  updatedAt: string
+  latestRevision?: string
+  currentRevision?: string
+  revisions: SystemHistoryRevision[]
 }
 
 export interface SystemScanProgress {
@@ -203,6 +276,7 @@ export interface SystemValidationReport {
 
 export interface SystemScanResult {
   runId: string
+  documentRevision: string
   status: SystemScanStatus
   gate: GateStatus
   validation: ValidationStatus
@@ -223,6 +297,7 @@ export interface SystemSynthesisCommitResult extends SystemScanResult {
 export interface ArchScopeStatusResult {
   found: boolean
   runId: string
+  documentRevision: string
   status: SystemScanStatus | 'NOT_FOUND'
   gate: GateStatus
   validation: ValidationStatus

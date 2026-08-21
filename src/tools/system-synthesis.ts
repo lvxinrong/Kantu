@@ -15,7 +15,7 @@ function requireAgent(exec: ToolRunContext) {
 export function createSystemSynthesisContextTool(service: ArchScopeService) {
   return defineTool({
     name: 'archscope_get_system_synthesis_context',
-    description: 'Internal ArchScope handoff tool for the current main agent. Load the complete system-writer protocol plus bounded evidence for a run that is awaiting synthesis. Use only when ArchScope explicitly asks you to synthesize that run.',
+    description: 'Internal ArchScope handoff tool for the current main agent. Load the complete system-writer protocol, adaptive full-or-bounded project evidence, and the untruncated relation catalog for a run awaiting synthesis.',
     parameters: {
       runId: { type: 'string', required: true, description: 'Exact ArchScope system run id awaiting main-agent synthesis.' },
     },
@@ -26,6 +26,10 @@ export function createSystemSynthesisContextTool(service: ArchScopeService) {
         properties: {
           runId: { type: 'string', required: true },
           protocolDigest: { type: 'string', required: true },
+          evidenceMode: { type: 'string', required: true },
+          evidenceBytes: { type: 'number', required: true },
+          fullEvidenceMaxBytes: { type: 'number', required: true },
+          relationCount: { type: 'number', required: true },
           prompt: { type: 'string', required: true },
         },
       },
@@ -75,7 +79,7 @@ export function createSystemProjectEvidenceTool(service: ArchScopeService) {
 export function createCommitSystemSynthesisTool(service: ArchScopeService) {
   return defineTool({
     name: 'archscope_commit_system_synthesis',
-    description: 'Commit the current DSH main agent system worldview for an ArchScope run. ArchScope normalizes machine metadata, writes Markdown and Mermaid artifacts, and validates evidence, boundaries, redaction, structure, and the project-level gate.',
+    description: 'Commit the current DSH main agent system worldview for an ArchScope run. ArchScope normalizes machine facts and validates evidence, exact relation statistics, portable paths, credential safety, structure, and the project-level gate.',
     parameters: {
       runId: { type: 'string', required: true },
       factBase: { type: 'string', required: true, description: 'Complete 22-section system fact-base Markdown, without a surrounding code fence.' },
@@ -89,6 +93,7 @@ export function createCommitSystemSynthesisTool(service: ArchScopeService) {
         additionalProperties: false,
         properties: {
           runId: { type: 'string', required: true },
+          documentRevision: { type: 'string', required: true },
           status: { type: 'string', required: true },
           gate: { type: 'string', required: true },
           validation: { type: 'string', required: true },
@@ -120,7 +125,7 @@ export function createCommitSystemSynthesisTool(service: ArchScopeService) {
         const errors = result.issues.filter(issue => issue.severity === 'ERROR')
         const action = result.retryAllowed
           ? `Validation failed with ${errors.length} error(s). Revise the document from these issues and call archscope_commit_system_synthesis once more:\n${errors.map(issue => `- ${issue.code}: ${issue.message}`).join('\n')}`
-          : `System synthesis committed. Validation ${result.validation}; machine status ${result.status}; project-scan gate ${result.gate}. Report the result to the user in Chinese.`
+          : `System synthesis committed as document revision ${result.documentRevision}. Validation ${result.validation}; machine status ${result.status}; project-scan gate ${result.gate}. Report only machine-provided counts in Chinese. Published artifacts are under ${result.outputDirectory}/system; the immutable snapshot is ${result.outputDirectory}/runs/${result.runId}/system; the mutable history index is ${result.outputDirectory}/system/history.json and must not be listed inside the run snapshot.`
         return [{ type: 'text', text: action }]
       },
     },

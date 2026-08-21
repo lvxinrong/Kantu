@@ -5,7 +5,7 @@ import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { ArchScopeStatusResult, IndexManifest, ProjectRegistry, SystemEvidenceBundle, SystemScanResult, SystemScanRunState, SystemValidationReport } from '../src/contracts/system-scan.js'
+import type { ArchScopeStatusResult, IndexManifest, ProjectRegistry, SystemEvidenceBundle, SystemHistoryIndex, SystemScanResult, SystemScanRunState, SystemValidationReport } from '../src/contracts/system-scan.js'
 import type { ProtocolLock } from '../src/protocol/catalog.js'
 import { ArchScopeService } from '../src/service.js'
 import type { SystemAnalyzer } from '../src/system/analyzer.js'
@@ -74,9 +74,10 @@ function completeAnalyzer(): SystemAnalyzer {
 
 async function commitFixtureSynthesis(service: ArchScopeService, workspaceRoot: string, runId: string) {
   await service.getSystemSynthesisContext(runId)
-  const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
-  const indexes = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/index-manifest.json'), 'utf8')) as IndexManifest
-  const evidence = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/evidence/index.json'), 'utf8')) as SystemEvidenceBundle
+  const runSystemRoot = path.join(workspaceRoot, 'archscope_docs', 'runs', runId, 'system')
+  const registry = JSON.parse(await readFile(path.join(runSystemRoot, 'project-registry.json'), 'utf8')) as ProjectRegistry
+  const indexes = JSON.parse(await readFile(path.join(runSystemRoot, 'index-manifest.json'), 'utf8')) as IndexManifest
+  const evidence = JSON.parse(await readFile(path.join(runSystemRoot, 'evidence', 'index.json'), 'utf8')) as SystemEvidenceBundle
   const validation = validateSystemArtifacts(registry, indexes, registry.generatedAt, evidence)
   return service.commitSystemSynthesis({
     runId,
@@ -111,7 +112,7 @@ describe('ArchScopeService system scan', () => {
 
     const pending = await service.scanSystem()
     const context = await service.getSystemSynthesisContext(pending.runId)
-    const pendingRegistry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
+    const pendingRegistry = JSON.parse(await readFile(path.join(workspaceRoot, `archscope_docs/runs/${pending.runId}/system/project-registry.json`), 'utf8')) as ProjectRegistry
     const projectKey = pendingRegistry.projects[0]?.projectKey as string
     const projectEvidence = await service.getSystemProjectEvidence(pending.runId, { projectKeys: [projectKey] })
     const result = await commitFixtureSynthesis(service, workspaceRoot, pending.runId)
@@ -120,6 +121,7 @@ describe('ArchScopeService system scan', () => {
     const synthesis = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/synthesis.json'), 'utf8')) as { writer: { kind: string, sessionId: string }, inputDigest: string, outputDigest: string }
 
     expect(result).toMatchObject({
+      documentRevision: 'S0001',
       status: 'COMPLETED',
       gate: 'READY',
       validation: 'PASSED',
@@ -135,6 +137,7 @@ describe('ArchScopeService system scan', () => {
     expect(projectEvidence.evidenceJson).toContain('Web entry')
     expect(projectEvidence.projectKeys).toEqual([projectKey])
     expect(factBase).toContain('| 文档状态 | 完整 |')
+    expect(factBase).toContain('| 事实版本 | S0001 |')
     expect(factBase).toContain('| 下层门禁 | READY |')
     expect(synthesis.writer).toEqual(expect.objectContaining({ kind: 'dsh-main-agent', sessionId: 'test-session' }))
     expect(synthesis.inputDigest).toMatch(/^[a-f0-9]{64}$/u)
@@ -175,6 +178,90 @@ describe('ArchScopeService system scan', () => {
     expect(firstDraft).toContain('# invalid')
   })
 
+  it('keeps immutable system revisions and promotes only a validated terminal run', async () => {
+    const workspaceRoot = await fixtureWorkspace()
+    const service = new ArchScopeService(new Context(), {
+      workspaceRoot,
+      outputDirectory: 'archscope_docs',
+      discoveryMaxDepth: 3,
+      registerCommand: false,
+      registerSystemScanTool: false,
+      registerStatusTool: false,
+    }, completeAnalyzer())
+
+    const firstPending = await service.scanSystem()
+    const first = await commitFixtureSynthesis(service, workspaceRoot, firstPending.runId)
+    const currentPath = path.join(workspaceRoot, 'archscope_docs/system/00-system-fact-base.md')
+    const firstSnapshotPath = path.join(workspaceRoot, `archscope_docs/runs/${first.runId}/system/00-system-fact-base.md`)
+    const firstCurrent = await readFile(currentPath, 'utf8')
+    const firstSnapshot = await readFile(firstSnapshotPath, 'utf8')
+
+    const secondPending = await service.scanSystem({ refresh: true })
+    const currentWhilePending = await readFile(currentPath, 'utf8')
+    const stagedRegistry = JSON.parse(await readFile(path.join(workspaceRoot, `archscope_docs/runs/${secondPending.runId}/system/project-registry.json`), 'utf8')) as ProjectRegistry
+    const second = await commitFixtureSynthesis(service, workspaceRoot, secondPending.runId)
+    const secondCurrent = await readFile(currentPath, 'utf8')
+    const preservedFirstSnapshot = await readFile(firstSnapshotPath, 'utf8')
+    const history = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/history.json'), 'utf8')) as SystemHistoryIndex
+
+    expect(first.documentRevision).toBe('S0001')
+    expect(second.documentRevision).toBe('S0002')
+    expect(firstCurrent).toBe(firstSnapshot)
+    expect(currentWhilePending).toBe(firstCurrent)
+    expect(stagedRegistry.projectCount).toBe(1)
+    expect(secondCurrent).toContain('| 事实版本 | S0002 |')
+    expect(preservedFirstSnapshot).toBe(firstSnapshot)
+    expect(history).toMatchObject({ latestRevision: 'S0002', currentRevision: 'S0002' })
+    expect(history.revisions).toEqual([
+      expect.objectContaining({ revision: 'S0001', runId: first.runId, publishedAsCurrent: true }),
+      expect.objectContaining({ revision: 'S0002', previousRevision: 'S0001', runId: second.runId, publishedAsCurrent: true }),
+    ])
+  })
+
+  it('archives a terminal failed revision without replacing the current fact base', async () => {
+    const workspaceRoot = await fixtureWorkspace()
+    const service = new ArchScopeService(new Context(), {
+      workspaceRoot,
+      outputDirectory: 'archscope_docs',
+      discoveryMaxDepth: 3,
+      registerCommand: false,
+      registerSystemScanTool: false,
+      registerStatusTool: false,
+    }, completeAnalyzer())
+
+    const firstPending = await service.scanSystem()
+    const first = await commitFixtureSynthesis(service, workspaceRoot, firstPending.runId)
+    const currentPath = path.join(workspaceRoot, 'archscope_docs/system/00-system-fact-base.md')
+    const published = await readFile(currentPath, 'utf8')
+    const failedPending = await service.scanSystem({ refresh: true })
+    await service.getSystemSynthesisContext(failedPending.runId)
+    const invalidDraft = {
+      factBase: '# invalid',
+      diagrams: { systemContext: 'invalid', internalRelations: 'invalid', entryOverview: 'invalid' },
+    }
+    const repairRequested = await service.commitSystemSynthesis({
+      runId: failedPending.runId,
+      writer: { kind: 'dsh-main-agent', sessionId: 'test-session' },
+      draft: invalidDraft,
+    })
+    const failed = await service.commitSystemSynthesis({
+      runId: failedPending.runId,
+      writer: { kind: 'dsh-main-agent', sessionId: 'test-session' },
+      draft: invalidDraft,
+    })
+    const currentAfterFailure = await readFile(currentPath, 'utf8')
+    const failedSnapshot = await readFile(path.join(workspaceRoot, `archscope_docs/runs/${failed.runId}/system/00-system-fact-base.md`), 'utf8')
+    const history = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/history.json'), 'utf8')) as SystemHistoryIndex
+
+    expect(first.documentRevision).toBe('S0001')
+    expect(repairRequested).toMatchObject({ documentRevision: 'PENDING', retryAllowed: true, validation: 'FAILED' })
+    expect(failed).toMatchObject({ documentRevision: 'S0002', status: 'BLOCKED', retryAllowed: false, validation: 'FAILED' })
+    expect(currentAfterFailure).toBe(published)
+    expect(failedSnapshot).toContain('# invalid')
+    expect(history).toMatchObject({ latestRevision: 'S0002', currentRevision: 'S0001' })
+    expect(history.revisions.at(-1)).toEqual(expect.objectContaining({ revision: 'S0002', publishedAsCurrent: false }))
+  })
+
   it('bounds targeted synthesis evidence retrieval to known persisted projects', async () => {
     const workspaceRoot = await fixtureWorkspace()
     const service = new ArchScopeService(new Context(), {
@@ -186,7 +273,7 @@ describe('ArchScopeService system scan', () => {
       registerStatusTool: false,
     }, completeAnalyzer())
     const pending = await service.scanSystem()
-    const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
+    const registry = JSON.parse(await readFile(path.join(workspaceRoot, `archscope_docs/runs/${pending.runId}/system/project-registry.json`), 'utf8')) as ProjectRegistry
     const projectKey = registry.projects[0]?.projectKey as string
 
     const evidence = await service.getSystemProjectEvidence(pending.runId, { projectKeys: [projectKey, 'missing'] })
@@ -298,7 +385,7 @@ describe('ArchScopeService system scan', () => {
     } as never
 
     const scan = await createSystemScanTool(service).execute({ refresh: false }, execution) as SystemScanResult
-    const registry = JSON.parse(await readFile(path.join(workspaceRoot, 'archscope_docs/system/project-registry.json'), 'utf8')) as ProjectRegistry
+    const registry = JSON.parse(await readFile(path.join(workspaceRoot, `archscope_docs/runs/${scan.runId}/system/project-registry.json`), 'utf8')) as ProjectRegistry
     const status = await createStatusTool(service).execute({ runId: scan.runId }, execution) as ArchScopeStatusResult
 
     expect(scan.projectCount).toBe(1)

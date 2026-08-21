@@ -16,6 +16,8 @@
         indexMode: moderate
         evidenceProvider: spawn
         systemConcurrency: 4
+        evidenceContextMode: auto
+        fullEvidenceMaxBytes: 524288
         registerCommand: true
         registerSystemScanTool: true
         registerStatusTool: true

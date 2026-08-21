@@ -39,6 +39,8 @@ describe('ArchScope plugin registration', () => {
 
     expect(commands.map(command => command.name)).toEqual(['archscope'])
     expect(commands[0]?.input?.hint).toContain('system')
+    expect(commands[0]?.input?.hint).not.toContain('status')
+    expect(commands[0]?.description).toContain('已创建的会话')
     expect(tools.map(tool => tool.name).sort()).toEqual([
       'archscope_commit_system_synthesis',
       'archscope_get_system_project_evidence',

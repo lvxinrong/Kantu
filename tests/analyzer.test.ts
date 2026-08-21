@@ -57,6 +57,14 @@ describe('DshSystemAnalyzer', () => {
               projectTypeCandidates: ['java-backend'],
               entries: ['HTTP entry — src/Main.java'],
               outboundDependencies: [],
+              relationCandidates: [{
+                targetAlias: 'inventory-service',
+                relationType: 'FEIGN_CLIENT',
+                evidenceStrength: 'DIRECT_SOURCE',
+                description: 'Inventory client contract',
+                evidencePaths: ['src/InventoryClient.java'],
+                runtimeStatus: 'UNCONFIRMED',
+              }],
               dataAssets: ['Repository candidate — src/OrderRepository.java'],
               infrastructure: ['Spring configuration — pom.xml'],
               aliases: ['service-a'],
@@ -109,6 +117,11 @@ describe('DshSystemAnalyzer', () => {
     expect(evidence.records[0]).toMatchObject({
       status: 'COLLECTED',
       entries: ['HTTP entry — src/Main.java'],
+      relationCandidates: [expect.objectContaining({
+        targetAlias: 'inventory-service',
+        relationType: 'FEIGN_CLIENT',
+        evidenceStrength: 'DIRECT_SOURCE',
+      })],
       scopeStatus: 'CLEAN',
       scopeViolations: [],
     })
@@ -117,6 +130,7 @@ describe('DshSystemAnalyzer', () => {
       toolFilter: { allow: expect.arrayContaining(['mcp__codebase_memory_mcp__get_architecture']) },
     })
     expect(JSON.stringify(subagentRequest?.outputSchema)).not.toContain('maxItems')
+    expect(JSON.stringify(subagentRequest?.outputSchema)).toContain('relationCandidates')
     expect(subagentRequest).toMatchObject({
       persona: expect.stringContaining('不存在 Glob、Inspect、OUT'),
     })

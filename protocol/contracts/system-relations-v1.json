@@ -1,0 +1,25 @@
+{
+  "contractId": "archscope/contract/system-relations/v1",
+  "version": "1.0.0",
+  "artifact": "system/relations.json",
+  "relationTypes": [
+    "FEIGN_CLIENT",
+    "HTTP_ROUTE_FAMILY",
+    "MAVEN_API_DEPENDENCY",
+    "SDK_DEPENDENCY",
+    "MESSAGE_CHANNEL",
+    "SHARED_DATA_ASSET",
+    "CONFIGURED_ENDPOINT",
+    "NAME_MATCH_CANDIDATE",
+    "OTHER"
+  ],
+  "evidenceStrengths": ["DIRECT_SOURCE", "CONFIGURATION", "NAME_MATCH"],
+  "runtimeStatuses": ["UNCONFIRMED"],
+  "rules": [
+    "Every relation has a stable relationId, source project, target alias, evidence strength, and at least one evidence path.",
+    "The complete relation catalog is never truncated before main-agent synthesis.",
+    "An internal targetProjectKey must resolve to the project registry.",
+    "Name matches remain candidates and never imply runtime or production use.",
+    "The human-readable fact base may aggregate relations, but relations.json retains every accepted candidate."
+  ]
+}

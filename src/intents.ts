@@ -2,7 +2,6 @@ export type ArchScopeIntent =
   | { kind: 'help' }
   | { kind: 'system.scan'; refresh: boolean }
   | { kind: 'project.scan'; projectKey: string; refresh: boolean }
-  | { kind: 'run.status'; runId?: string }
   | { kind: 'run.resume'; runId?: string }
 
 export type ArchScopeIntentParseResult =

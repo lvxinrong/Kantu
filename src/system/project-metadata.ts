@@ -70,22 +70,23 @@ function rootFileAllowed(name: string): boolean {
 
 function redactSensitiveText(value: string, kind: ProjectMetadataKind, fileName: string): string {
   if (kind === 'environment') {
-    const keys = value
+    const entries = value
       .split(/\r?\n/gu)
       .map(line => line.trim())
       .filter(line => line !== '' && !line.startsWith('#'))
       .flatMap(line => {
-        const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/u.exec(line)
-        return match?.[1] === undefined ? [] : [`${match[1]}=<redacted>`]
+        const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line)
+        if (match?.[1] === undefined) return []
+        const secretKey = /(?:api_?key|access_?key|secret|credential|client_?secret|password|passwd|token)/iu.test(match[1])
+        return [`${match[1]}=${secretKey ? '<redacted>' : redactSensitiveText(match[2] ?? '', 'configuration', fileName)}`]
       })
-    return keys.length === 0 ? `${fileName}: environment file present; values withheld` : keys.join('\n')
+    return entries.length === 0 ? `${fileName}: environment file present` : entries.join('\n')
   }
   return value
     .replace(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*/giu, '<redacted-private-key>')
-    .replace(/jdbc:[a-z0-9]+:\/\/[^\s"'<>]+/giu, 'jdbc:<redacted>')
-    .replace(/https?:\/\/[^\s"'<>]+/giu, 'https://<redacted-host>')
-    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/gu, '<redacted-ip>')
+    .replace(/((?:https?|jdbc:[a-z0-9]+):\/\/)[^/\s:@]+:[^@\s/]+@/giu, '$1<redacted-credentials>@')
     .replace(/(["']?(?:api[ _.-]?key|access[ _.-]?key|secret|credential|client[ _.-]?secret|password|passwd|token)["']?\s*[=:]\s*["']?)[^\s,;"'<>]{1,}/giu, '$1<redacted>')
+    .replace(/((?:Authorization\s*[:=]\s*|Bearer\s+))[A-Za-z0-9._~+/=-]{8,}/giu, '$1<redacted>')
     .replace(/(<(?:password|passwd|secret|token|accessKey|secretKey)>)[\s\S]*?(<\/[^>]+>)/giu, '$1<redacted>$2')
 }
 

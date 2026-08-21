@@ -13,7 +13,7 @@ afterEach(async () => {
 })
 
 describe('collectSafeProjectMetadata', () => {
-  it('reads bounded metadata inside one project and redacts values before model injection', async () => {
+  it('reads bounded metadata, preserves architecture facts, and removes credentials before model injection', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'archscope-metadata-'))
     temporaryRoots.push(root)
     const outside = path.join(root, '..', `${path.basename(root)}-outside.txt`)
@@ -25,7 +25,7 @@ describe('collectSafeProjectMetadata', () => {
       repository: 'https://user:password@example.com/private.git',
       password: 'super-secret-value',
     }), 'utf8')
-    await writeFile(path.join(root, '.env.production'), 'API_TOKEN=raw-token\nPUBLIC_NAME=demo\n', 'utf8')
+    await writeFile(path.join(root, '.env.production'), 'API_TOKEN=raw-token\nPUBLIC_NAME=demo\nSERVICE_URL=https://internal.example.com/sfa\n', 'utf8')
     await writeFile(path.join(root, '.github', 'workflows', 'ci.yml'), 'steps:\n  - run: echo ok\n', 'utf8')
     await symlink(outside, path.join(root, 'README.md'))
 
@@ -43,7 +43,9 @@ describe('collectSafeProjectMetadata', () => {
     expect(serialized).not.toContain('super-secret-value')
     expect(serialized).not.toContain('outside-secret')
     expect(serialized).toContain('API_TOKEN=<redacted>')
-    expect(serialized).toContain('https://<redacted-host>')
+    expect(serialized).toContain('PUBLIC_NAME=demo')
+    expect(serialized).toContain('SERVICE_URL=https://internal.example.com/sfa')
+    expect(serialized).toContain('https://<redacted-credentials>@example.com/private.git')
     await expect(readFile(outside, 'utf8')).resolves.toBe('outside-secret')
   })
 })

@@ -1,13 +1,15 @@
 {
   "contractId": "archscope/contract/system-document/v1",
-  "version": "1.4.0",
+  "version": "1.7.0",
   "metadata": {
     "协议版本": ["archscope/contract/system-document/v1"],
+    "事实版本": ["PENDING"],
     "文档状态": ["完整", "草稿"],
     "证据状态": ["运行态已确认", "运行态部分确认，人工待确认", "源码视角已完成，运行态待确认", "证据不足"],
     "下层门禁": ["READY", "BLOCKED"],
     "校验状态": ["PASSED", "FAILED", "NOT_RUN", "NOT_APPLICABLE"]
   },
+  "machineRelationFields": ["关系候选总数", "内部关系数", "未解析关系数", "内部关系构成", "未解析关系构成", "关系类型构成"],
   "headings": [
     "## 0. 文档边界说明",
     "## 1. 当前目录性质",
@@ -37,22 +39,25 @@
     "system/project-registry.json",
     "system/index-manifest.json",
     "system/evidence/index.json",
+    "system/relations.json",
     "system/protocol-lock.json",
     "system/validation.json",
     "system/synthesis.json",
+    "system/history.json",
     "system/diagrams/01-system-context.mmd",
     "system/diagrams/02-internal-relations.mmd",
     "system/diagrams/03-entry-overview.mmd"
   ],
   "forbiddenHeadingPatterns": ["重构建议", "技术债务", "代码热点", "业务流程"],
   "requiredQuestionClasses": ["阻断项目级", "影响生产边界", "影响入口链路", "影响数据归属", "可延后"],
-  "requiredSelfChecks": ["工程注册表已生成", "每个工程都有索引状态", "关键待确认问题已分级", "证据仲裁已执行", "敏感信息已脱敏", "源码存在与生产启用已区分", "系统级边界未越界", "项目级门禁"],
+  "requiredSelfChecks": ["工程注册表已生成", "每个工程都有索引状态", "完整关系目录已生成", "关键待确认问题已分级", "证据仲裁已执行", "凭据与秘密值已检查", "源码存在与生产启用已区分", "系统级边界未越界", "项目级门禁"],
   "requiredEvidenceSourceTypes": ["运行态", "人工确认", "部署发布", "代码图谱", "源码", "历史文档"],
   "qualityDimensions": ["工程覆盖", "生产边界可信度", "入口链路可信度", "内部关系可信度", "外部依赖可信度", "数据归属可信度"],
   "evidenceCoverageObjects": ["工程", "生产服务", "系统入口", "入口链路", "内部关系", "外部依赖", "数据资产"],
   "boundaryRules": {
     "maxDocumentCharacters": 100000,
     "requiredDetailPointer": "system/evidence/index.json",
+    "requiredRelationPointer": "system/relations.json",
     "detailSensitiveSections": [
       "## 5. 系统入口",
       "## 6. 基础设施事实",

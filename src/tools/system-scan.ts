@@ -9,7 +9,7 @@ export function createSystemScanMessage(result: SystemScanResult): string {
       `ArchScope evidence collection ready · ${result.projectCount} projects · awaiting current main-agent system synthesis.`,
       `Fresh indexes ${result.indexedProjectCount}/${result.projectCount} · collected evidence ${result.evidenceProjectCount}/${result.projectCount} · scope violations ${result.scopeViolationCount}.`,
       `Next action for the current DSH main agent: call archscope_get_system_synthesis_context with runId ${result.runId}, follow its protocol, then commit with archscope_commit_system_synthesis.`,
-      `Evidence artifacts: ${result.outputDirectory}/system/evidence/index.json`,
+      `Evidence artifacts: ${result.outputDirectory}/runs/${result.runId}/system/evidence/index.json`,
     ].join('\n')
   }
   const scanOutcome = result.status === 'FAILED' ? 'failed' : result.reused ? 'results reused' : 'completed'
@@ -20,12 +20,16 @@ export function createSystemScanMessage(result: SystemScanResult): string {
   const analysisOutcome = sourceAnalysisComplete
     ? 'completed at source level; runtime evidence pending'
     : 'awaiting source evidence'
+  const artifactRoot = result.validation === 'PASSED'
+    ? `${result.outputDirectory}/system`
+    : `${result.outputDirectory}/runs/${result.runId}/system`
   return [
     `ArchScope system scan ${scanOutcome} · ${result.projectCount} projects · system analysis ${analysisOutcome}.`,
     `Fresh indexes ${result.indexedProjectCount}/${result.projectCount} · collected evidence ${result.evidenceProjectCount}/${result.projectCount} · scope violations ${result.scopeViolationCount}.`,
     `System artifact validation ${result.validation} · project-scan gate ${result.gate}.`,
-    `Artifacts: ${result.outputDirectory}/system/00-system-fact-base.md`,
-    `Run: ${result.runId} · machine status ${result.status}.`,
+    `Artifacts: ${artifactRoot}/00-system-fact-base.md`,
+    `History index: ${result.outputDirectory}/system/history.json`,
+    `Run: ${result.runId} · document revision ${result.documentRevision} · machine status ${result.status}.`,
   ].join('\n')
 }
 
@@ -42,6 +46,7 @@ export function createSystemScanTool(service: ArchScopeService) {
         additionalProperties: false,
         properties: {
           runId: { type: 'string', required: true },
+          documentRevision: { type: 'string', required: true },
           status: { type: 'string', required: true },
           gate: { type: 'string', required: true },
           validation: { type: 'string', required: true },

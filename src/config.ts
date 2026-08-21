@@ -8,6 +8,8 @@ export interface Config {
   indexMode?: 'fast' | 'moderate' | 'full'
   evidenceProvider?: string
   systemConcurrency?: number
+  evidenceContextMode?: 'auto' | 'full' | 'bounded'
+  fullEvidenceMaxBytes?: number
   registerCommand: boolean
   registerSystemScanTool: boolean
   registerStatusTool: boolean
@@ -38,6 +40,14 @@ export const Config: Schema<Config> = Schema.object({
     .max(16)
     .default(4)
     .description('Maximum concurrent indexing and system evidence tasks.'),
+  evidenceContextMode: Schema.union(['auto', 'full', 'bounded'] as const)
+    .default('auto')
+    .description('How system evidence is injected into the main-agent synthesis context.'),
+  fullEvidenceMaxBytes: Schema.number()
+    .min(65536)
+    .max(4194304)
+    .default(524288)
+    .description('Maximum UTF-8 evidence payload size used by auto mode before bounded injection.'),
   registerCommand: Schema.boolean()
     .default(true)
     .description('Register the deterministic /archscope command when a command adapter is available.'),

@@ -12,6 +12,9 @@ import {
   type ProjectRegistry,
   type IndexManifest,
   type SystemEvidenceBundle,
+  type SystemHistoryIndex,
+  type SystemHistoryRevision,
+  type SystemRelationCatalog,
   type SystemScanResult,
   type SystemScanRunState,
   type SystemScanProgress,
@@ -31,6 +34,7 @@ import {
 } from './system/artifacts.js'
 import { DshSystemAnalyzer, type SystemAnalyzer } from './system/analyzer.js'
 import { discoverProjects } from './system/discovery.js'
+import { buildSystemRelationCatalog } from './system/relations.js'
 import {
   buildSystemSynthesisContext,
   systemSynthesisInputDigest,
@@ -66,6 +70,14 @@ function safeOutputRoot(workspaceRoot: string, outputDirectory: string): string 
 function createRunId(now: Date): string {
   const timestamp = now.toISOString().replace(/[-:.TZ]/gu, '').slice(0, 14)
   return `system-${timestamp}-${randomUUID().slice(0, 8)}`
+}
+
+function nextSystemRevision(history: SystemHistoryIndex): string {
+  const highest = history.revisions.reduce((maximum, record) => {
+    const match = /^S(\d+)$/u.exec(record.revision)
+    return match === null ? maximum : Math.max(maximum, Number(match[1]))
+  }, 0)
+  return `S${String(highest + 1).padStart(4, '0')}`
 }
 
 export interface ScanSystemOptions {
@@ -129,6 +141,7 @@ export class ArchScopeService extends Service {
       return {
         found: false,
         runId: '',
+        documentRevision: 'NONE',
         status: 'NOT_FOUND',
         gate: 'BLOCKED',
         validation: 'NOT_RUN',
@@ -142,6 +155,7 @@ export class ArchScopeService extends Service {
     return {
       found: true,
       runId: state.runId,
+      documentRevision: state.documentRevision ?? 'LEGACY',
       status: state.status,
       gate: state.gate,
       validation: state.validation,
@@ -164,15 +178,15 @@ export class ArchScopeService extends Service {
     if (state.protocol.digest !== pack.lock.packDigest) {
       throw new Error('ArchScope protocol changed after evidence collection; start a refreshed system scan.')
     }
-    const { registry, indexes, evidence } = await this.readSystemInputs(workspace.outputRoot)
-    const inputDigest = systemSynthesisInputDigest(registry, indexes, evidence)
+    const { registry, indexes, evidence, relations } = await this.readSystemInputs(workspace.outputRoot, runId)
+    const inputDigest = systemSynthesisInputDigest(registry, indexes, evidence, relations)
     if (state.synthesisInputDigest === undefined || state.synthesisInputDigest !== inputDigest) {
       throw new Error('ArchScope evidence no longer matches this run; start or resume the latest system scan.')
     }
     if (state.status === 'AWAITING_SYNTHESIS') {
       await this.transition(workspace.outputRoot, state, 'SYNTHESIZING')
     }
-    return buildSystemSynthesisContext(runId, pack, registry, indexes, evidence)
+    return buildSystemSynthesisContext(runId, pack, registry, indexes, evidence, relations, this.config)
   }
 
   async getSystemProjectEvidence(runId: string, options: SystemProjectEvidenceOptions): Promise<SystemProjectEvidenceContext> {
@@ -190,8 +204,8 @@ export class ArchScopeService extends Service {
     if (state.protocol.digest !== pack.lock.packDigest) {
       throw new Error('ArchScope protocol changed after evidence collection; start a refreshed system scan.')
     }
-    const { registry, indexes, evidence } = await this.readSystemInputs(workspace.outputRoot)
-    const inputDigest = systemSynthesisInputDigest(registry, indexes, evidence)
+    const { registry, indexes, evidence, relations } = await this.readSystemInputs(workspace.outputRoot, runId)
+    const inputDigest = systemSynthesisInputDigest(registry, indexes, evidence, relations)
     if (state.synthesisInputDigest === undefined || state.synthesisInputDigest !== inputDigest) {
       throw new Error('ArchScope evidence no longer matches this run; start or resume the latest system scan.')
     }
@@ -220,17 +234,31 @@ export class ArchScopeService extends Service {
     if (state.protocol.digest !== pack.lock.packDigest) {
       throw new Error('ArchScope protocol changed after evidence collection; start a refreshed system scan.')
     }
-    const { registry, indexes, evidence } = await this.readSystemInputs(workspace.outputRoot)
-    const inputDigest = systemSynthesisInputDigest(registry, indexes, evidence)
+    const { registry, indexes, evidence, relations } = await this.readSystemInputs(workspace.outputRoot, options.runId)
+    const inputDigest = systemSynthesisInputDigest(registry, indexes, evidence, relations)
     if (state.synthesisInputDigest === undefined || state.synthesisInputDigest !== inputDigest) {
       throw new Error('ArchScope evidence no longer matches this run; start or resume the latest system scan.')
     }
     const attempt = (state.synthesisAttempts ?? 0) + 1
     const generatedAt = new Date().toISOString()
-    const prepared = prepareSynthesizedSystemArtifacts(registry, indexes, evidence, generatedAt, pack, options.draft)
+    let prepared = prepareSynthesizedSystemArtifacts(registry, indexes, evidence, relations, generatedAt, pack, options.draft)
+    const retryAllowed = prepared.validation.status === 'FAILED' && attempt < 2
+    const history = retryAllowed ? undefined : await this.readSystemHistory(workspace.outputRoot)
+    const documentRevision = history === undefined ? 'PENDING' : nextSystemRevision(history)
+    if (history !== undefined) {
+      prepared = prepareSynthesizedSystemArtifacts(registry, indexes, evidence, relations, generatedAt, pack, options.draft, documentRevision)
+    }
+    const nextStatus: SystemScanStatus = retryAllowed
+      ? 'SYNTHESIZING'
+      : prepared.validation.status === 'FAILED' || prepared.validation.gate === 'BLOCKED'
+        ? 'BLOCKED'
+        : 'COMPLETED'
+    const publishCurrent = !retryAllowed && prepared.validation.status === 'PASSED'
     const synthesis = {
       protocolVersion: SYSTEM_SCAN_PROTOCOL,
       runId: options.runId,
+      documentRevision,
+      ...history?.latestRevision === undefined ? {} : { previousRevision: history.latestRevision },
       generatedAt,
       writer: options.writer,
       attempt,
@@ -243,16 +271,37 @@ export class ArchScopeService extends Service {
       registry,
       indexes,
       evidence,
+      relations,
       synthesis,
+      finalizeRevision: !retryAllowed,
+      publishCurrent,
       ...prepared,
     })
-    const retryAllowed = prepared.validation.status === 'FAILED' && attempt < 2
-    const nextStatus: SystemScanStatus = retryAllowed
-      ? 'SYNTHESIZING'
-      : prepared.validation.status === 'FAILED' || prepared.validation.gate === 'BLOCKED'
-        ? 'BLOCKED'
-        : 'COMPLETED'
+    if (history !== undefined) {
+      const revision: SystemHistoryRevision = {
+        revision: documentRevision,
+        ...history.latestRevision === undefined ? {} : { previousRevision: history.latestRevision },
+        runId: options.runId,
+        generatedAt,
+        status: nextStatus,
+        gate: prepared.validation.gate,
+        validation: prepared.validation.status,
+        protocol: state.protocol,
+        synthesisAttempt: attempt,
+        outputDigest: synthesis.outputDigest,
+        publishedAsCurrent: publishCurrent,
+        artifactRoot: `runs/${options.runId}/system`,
+      }
+      await this.writeSystemHistory(workspace.outputRoot, {
+        protocolVersion: SYSTEM_SCAN_PROTOCOL,
+        updatedAt: generatedAt,
+        latestRevision: documentRevision,
+        ...publishCurrent ? { currentRevision: documentRevision } : history.currentRevision === undefined ? {} : { currentRevision: history.currentRevision },
+        revisions: [...history.revisions, revision],
+      })
+    }
     const next = await this.transition(workspace.outputRoot, state, nextStatus, {
+      documentRevision,
       synthesisAttempts: attempt,
       validation: prepared.validation.status,
       gate: prepared.validation.gate,
@@ -308,6 +357,7 @@ export class ArchScopeService extends Service {
         digest: protocolPack.lock.packDigest,
       },
       runId,
+      documentRevision: 'PENDING',
       status: 'DISCOVERING',
       gate: 'BLOCKED',
       validation: 'NOT_RUN',
@@ -367,11 +417,13 @@ export class ArchScopeService extends Service {
         total: discovery.projects.length,
       })
       const evidence = await this.analyzer.collectEvidence(discovery.projects, indexes, analyzerOptions)
+      const relations = buildSystemRelationCatalog(registry, evidence)
       await writeSystemEvidenceArtifacts({
-        outputRoot: workspace.outputRoot,
+        outputRoot: path.join(workspace.outputRoot, 'runs', runId),
         registry,
         indexes,
         evidence,
+        relations,
         protocolLock: protocolPack.lock,
       })
       state = await this.transition(workspace.outputRoot, state, 'AWAITING_SYNTHESIS', {
@@ -380,7 +432,7 @@ export class ArchScopeService extends Service {
           record.scopeViolations.length,
           record.scopeStatus === 'VIOLATION' ? 1 : 0,
         ), 0),
-        synthesisInputDigest: systemSynthesisInputDigest(registry, indexes, evidence),
+        synthesisInputDigest: systemSynthesisInputDigest(registry, indexes, evidence, relations),
       })
       options.onProgress?.({ stage: 'AWAITING_SYNTHESIS', message: '单工程证据已持久化，等待当前主 Agent 综合系统世界观' })
       return this.toResult(state, false)
@@ -418,22 +470,54 @@ export class ArchScopeService extends Service {
     await atomicWriteJson(path.join(outputRoot, 'runs', 'latest.json'), { runId: state.runId })
   }
 
-  private async readSystemInputs(outputRoot: string): Promise<{
+  private async readSystemInputs(outputRoot: string, runId: string): Promise<{
     registry: ProjectRegistry
     indexes: IndexManifest
     evidence: SystemEvidenceBundle
+    relations: SystemRelationCatalog
   }> {
-    const systemRoot = path.join(outputRoot, 'system')
-    const [registry, indexes, evidence] = await Promise.all([
+    const systemRoot = path.join(outputRoot, 'runs', runId, 'system')
+    const [registry, indexes, evidence, relations] = await Promise.all([
       readFile(path.join(systemRoot, 'project-registry.json'), 'utf8'),
       readFile(path.join(systemRoot, 'index-manifest.json'), 'utf8'),
       readFile(path.join(systemRoot, 'evidence', 'index.json'), 'utf8'),
+      readFile(path.join(systemRoot, 'relations.json'), 'utf8'),
     ])
     return {
       registry: JSON.parse(registry) as ProjectRegistry,
       indexes: JSON.parse(indexes) as IndexManifest,
       evidence: JSON.parse(evidence) as SystemEvidenceBundle,
+      relations: JSON.parse(relations) as SystemRelationCatalog,
     }
+  }
+
+  private async readSystemHistory(outputRoot: string): Promise<SystemHistoryIndex> {
+    try {
+      const parsed = JSON.parse(await readFile(path.join(outputRoot, 'system', 'history.json'), 'utf8')) as Partial<SystemHistoryIndex>
+      if (parsed.protocolVersion !== SYSTEM_SCAN_PROTOCOL || !Array.isArray(parsed.revisions)) {
+        throw new Error('ArchScope system history is malformed or uses an unsupported protocol.')
+      }
+      const revisions = parsed.revisions
+      if (new Set(revisions.map(record => record.revision)).size !== revisions.length) {
+        throw new Error('ArchScope system history contains duplicate revisions.')
+      }
+      return {
+        protocolVersion: SYSTEM_SCAN_PROTOCOL,
+        updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date(0).toISOString(),
+        ...typeof parsed.latestRevision === 'string' ? { latestRevision: parsed.latestRevision } : {},
+        ...typeof parsed.currentRevision === 'string' ? { currentRevision: parsed.currentRevision } : {},
+        revisions,
+      }
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        return { protocolVersion: SYSTEM_SCAN_PROTOCOL, updatedAt: new Date(0).toISOString(), revisions: [] }
+      }
+      throw error
+    }
+  }
+
+  private async writeSystemHistory(outputRoot: string, history: SystemHistoryIndex): Promise<void> {
+    await atomicWriteJson(path.join(outputRoot, 'system', 'history.json'), history)
   }
 
   private async readRunState(outputRoot: string, runId?: string): Promise<SystemScanRunState | undefined> {
@@ -455,6 +539,7 @@ export class ArchScopeService extends Service {
   private toResult(state: SystemScanRunState, reused: boolean): SystemScanResult {
     return {
       runId: state.runId,
+      documentRevision: state.documentRevision ?? 'LEGACY',
       status: state.status,
       gate: state.gate,
       validation: state.validation,

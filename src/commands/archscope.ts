@@ -2,9 +2,8 @@ import type { CommandDefinition, CommandResult } from '@deepseek-ai/dsh-commands
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolExecutionInput } from '@deepseek-ai/dsh-tools'
 
-import type { ArchScopeStatusResult, SystemScanProgress, SystemScanResult } from '../contracts/system-scan.js'
+import type { SystemScanProgress, SystemScanResult } from '../contracts/system-scan.js'
 import type { ArchScopeIntent, ArchScopeIntentParseResult } from '../intents.js'
-import { createStatusMessage } from '../tools/status.js'
 import { createSystemScanMessage } from '../tools/system-scan.js'
 
 const SUBCOMMAND_ALIASES = new Map<string, string>([
@@ -12,22 +11,27 @@ const SUBCOMMAND_ALIASES = new Map<string, string>([
   ['系统级扫描', 'system'],
   ['project', 'project'],
   ['项目级扫描', 'project'],
-  ['status', 'status'],
-  ['状态', 'status'],
   ['resume', 'resume'],
   ['继续', 'resume'],
   ['help', 'help'],
   ['帮助', 'help'],
 ])
 
-export const ARCHSCOPE_COMMAND_HELP = `ArchScope commands:
-  /archscope system [--refresh]
-  /archscope project <project-key> [--refresh]
-  /archscope status [run-id]
-  /archscope resume [run-id]
-  /archscope help
+export const ARCHSCOPE_COMMAND_HELP = `ArchScope · 证据驱动的系统架构勘察
 
-Chinese aliases: 系统级扫描, 项目级扫描, 状态, 继续, 帮助`
+系统级定世界观，项目级定工程画像，模块级定职责边界，代码级定执行链路。
+
+当前可用：
+  /archscope system            扫描当前 DSH 工作区，并复用已有代码智能索引
+  /archscope system --refresh  扫描当前 DSH 工作区，并强制刷新全部工程索引
+  /archscope help              显示本指南；直接输入 /archscope 效果相同
+
+运行说明：
+  - 系统扫描会自动发现工程、准备索引、采集证据并持续汇报进度
+  - 普通扫描优先复用索引；只有确实需要重建索引时才使用 --refresh
+  - DSH 当前无法在空白新会话中执行 Slash Command；请先选择已有会话，或发送普通消息创建会话
+
+规划中：项目级扫描、失败恢复、模块级分析与代码链路追踪。`
 
 function failure(message: string): ArchScopeIntentParseResult {
   return { ok: false, error: `${message}\n\n${ARCHSCOPE_COMMAND_HELP}` }
@@ -39,13 +43,13 @@ function parseRefreshArguments(args: string[], usage: string): ArchScopeIntentPa
   return failure(`Invalid arguments. Usage: ${usage}`)
 }
 
-function parseOptionalRunId(args: string[], kind: 'run.status' | 'run.resume', usage: string): ArchScopeIntentParseResult {
+function parseOptionalRunId(args: string[], usage: string): ArchScopeIntentParseResult {
   if (args.length > 1 || args[0]?.startsWith('-')) {
     return failure(`Invalid arguments. Usage: ${usage}`)
   }
   return {
     ok: true,
-    intent: args[0] === undefined ? { kind } : { kind, runId: args[0] },
+    intent: args[0] === undefined ? { kind: 'run.resume' } : { kind: 'run.resume', runId: args[0] },
   }
 }
 
@@ -78,10 +82,8 @@ export function parseArchScopeCommand(rawInput: string): ArchScopeIntentParseRes
         ? { ok: true, intent: { kind: 'project.scan', projectKey, refresh } }
         : refresh
     }
-    case 'status':
-      return parseOptionalRunId(args, 'run.status', `${command} status [run-id]`)
     case 'resume':
-      return parseOptionalRunId(args, 'run.resume', `${command} resume [run-id]`)
+      return parseOptionalRunId(args, `${command} resume [run-id]`)
     default:
       return failure(`Unknown ArchScope subcommand: ${rawSubcommand ?? ''}`)
   }
@@ -89,7 +91,6 @@ export function parseArchScopeCommand(rawInput: string): ArchScopeIntentParseRes
 
 export interface ArchScopeCommandRuntime {
   scanSystem(options: { refresh?: boolean, signal?: AbortSignal, workspaceRoot?: string, agent?: ToolExecutionInput['agent'], onProgress?: (progress: SystemScanProgress) => void }): Promise<SystemScanResult>
-  status(runId?: string, options?: { workspaceRoot?: string }): Promise<ArchScopeStatusResult>
 }
 
 function createSystemScanStartedMessage(refresh: boolean) {
@@ -107,6 +108,21 @@ function createSystemScanStartedMessage(refresh: boolean) {
   })
 }
 
+function createHelpMessage() {
+  return createUserMessage({
+    content: [{
+      type: 'text',
+      text: `The user asked for ArchScope help. Reply in Chinese as a clear, concise, normal conversational answer—not as a tool result, command log, or thinking note. Do not call any tools. Preserve the meaning and commands in this guide:\n\n${ARCHSCOPE_COMMAND_HELP}`,
+    }],
+    source: {
+      kind: 'plugin',
+      plugin: 'archscope',
+      form: 'notice',
+      summary: 'ArchScope 使用指南',
+    },
+  })
+}
+
 function createSystemScanCompletedMessage(result: SystemScanResult) {
   const sourceAnalysisComplete = result.projectCount > 0
     && result.indexedProjectCount === result.projectCount
@@ -116,6 +132,9 @@ function createSystemScanCompletedMessage(result: SystemScanResult) {
     ? 'source-level analysis completed; runtime/production evidence remains unconfirmed'
     : 'source-level analysis is incomplete; inspect index, evidence, and scope counts'
   const projectAnalysis = result.gate === 'READY' ? 'available' : 'not yet available'
+  const artifactRoot = result.validation === 'PASSED'
+    ? `${result.outputDirectory}/system`
+    : `${result.outputDirectory}/runs/${result.runId}/system`
 
   return createUserMessage({
     content: [{
@@ -127,9 +146,11 @@ function createSystemScanCompletedMessage(result: SystemScanResult) {
 - collected project evidence: ${result.evidenceProjectCount}/${result.projectCount}
 - actual evidence scope violations: ${result.scopeViolationCount}
 - system-level analysis: ${systemAnalysis}
-- system artifact validation (structure, evidence, scope, gate, and redaction): ${result.validation}
+- system artifact validation (structure, evidence, relation statistics, scope, gate, credential checks, and portable paths): ${result.validation}
 - project-level analysis: ${projectAnalysis}
-- artifact: ${result.outputDirectory}/system/00-system-fact-base.md
+- system fact-base revision: ${result.documentRevision}
+- artifact: ${artifactRoot}/00-system-fact-base.md
+- current history index: ${result.outputDirectory}/system/history.json
 
 Put these raw fields under a final "技术详情" line instead of leading with them:
 - run: ${result.runId}
@@ -202,8 +223,6 @@ export async function executeArchScopeIntent(
   switch (intent.kind) {
     case 'help':
       return { kind: 'success', text: ARCHSCOPE_COMMAND_HELP }
-    case 'run.status':
-      return { kind: 'success', text: createStatusMessage(await runtime.status(intent.runId, { workspaceRoot })) }
     case 'system.scan': {
       const result = await runtime.scanSystem({ refresh: intent.refresh, signal, workspaceRoot })
       return { kind: 'success', text: createSystemScanMessage(result) }
@@ -224,11 +243,16 @@ export async function executeArchScopeIntent(
 export function createArchScopeCommand(runtime: ArchScopeCommandRuntime): CommandDefinition {
   return {
     name: 'archscope',
-    description: 'run and inspect evidence-driven ArchScope architecture scans',
-    input: { hint: 'system | project <project-key> | status | resume | help' },
+    description: '证据驱动的系统架构勘察；需在已创建的会话中运行',
+    input: { hint: 'system [--refresh] | help' },
     handler: async ({ rawInput, signal, agent }) => {
       const parsed = parseArchScopeCommand(rawInput)
       if (!parsed.ok) return { kind: 'error', text: parsed.error }
+
+      if (parsed.intent.kind === 'help') {
+        agent.followup(createHelpMessage())
+        return { kind: 'success' }
+      }
 
       if (parsed.intent.kind === 'system.scan') {
         agent.followup(createSystemScanStartedMessage(parsed.intent.refresh))

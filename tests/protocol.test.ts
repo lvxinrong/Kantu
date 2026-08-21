@@ -10,9 +10,11 @@ const artifactPaths = [
   'system/project-registry.json',
   'system/index-manifest.json',
   'system/evidence/index.json',
+  'system/relations.json',
   'system/protocol-lock.json',
   'system/validation.json',
   'system/synthesis.json',
+  'system/history.json',
   'system/diagrams/01-system-context.mmd',
   'system/diagrams/02-internal-relations.mmd',
   'system/diagrams/03-entry-overview.mmd',
@@ -58,19 +60,20 @@ describe('system protocol pack', () => {
     expect(validateSystemDocument(factBase, artifactPaths, pack).filter(issue => issue.severity === 'ERROR')).toEqual([])
   })
 
-  it('fails closed on missing artifacts, invalid structure, and sensitive values', async () => {
+  it('fails closed on missing artifacts, invalid structure, credentials, and local paths while preserving architecture identifiers', async () => {
     const pack = await loadProtocolPack()
     const { registry, indexes, evidence, generatedAt } = fixture()
     const validation = validateSystemArtifacts(registry, indexes, generatedAt, evidence)
     const unsafe = renderSystemFactBase(registry, indexes, evidence, validation)
       .replace('## 21. 后续分析任务拆分', '## 22. 错误章节')
-      .concat('\npassword=abcdefghijklmnop\n内部域名 internal.example.com\n主库 hotkidceo_production\n')
+      .concat('\npassword=abcdefghijklmnop\nAuthorization: Bearer abcdefghijklmnop\n-----BEGIN PRIVATE KEY-----\n内部域名 internal.example.com\n主库 hotkidceo_production\n本机 /Users/example/workspace\n')
     const issues = validateSystemDocument(unsafe, artifactPaths.slice(0, -1), pack)
 
     expect(issues.map(issue => issue.code)).toEqual(expect.arrayContaining([
       'SYSTEM_HEADINGS_INVALID',
       'SYSTEM_ARTIFACT_MISSING',
       'SENSITIVE_VALUE_DETECTED',
+      'SYSTEM_LOCAL_PATH_LEAK',
     ]))
     expect(issues.filter(issue => issue.code === 'SENSITIVE_VALUE_DETECTED')).toHaveLength(3)
   })

@@ -10,6 +10,7 @@ import {
   renderSystemFactBase,
   validateSystemArtifacts,
 } from '../src/system/artifacts.js'
+import { buildSystemRelationCatalog } from '../src/system/relations.js'
 
 describe('validateSystemArtifacts', () => {
   it('rejects index manifests that are not a one-to-one project mapping', () => {
@@ -187,7 +188,7 @@ describe('validateSystemArtifacts', () => {
     }
     const initial = validateSystemArtifacts(registry, indexes, generatedAt, evidence)
     const factBase = renderSystemFactBase(registry, indexes, evidence, initial).replace('当前无源码视角阻断项', '重复工程归属尚未仲裁')
-    const prepared = prepareSynthesizedSystemArtifacts(registry, indexes, evidence, generatedAt, await loadProtocolPack(), {
+    const prepared = prepareSynthesizedSystemArtifacts(registry, indexes, evidence, buildSystemRelationCatalog(registry, evidence), generatedAt, await loadProtocolPack(), {
       factBase,
       diagrams: {
         systemContext: renderSystemContextDiagram(registry.projects, evidence),
@@ -200,5 +201,39 @@ describe('validateSystemArtifacts', () => {
     expect(prepared.validation.issues.map(issue => issue.code)).toContain('PROJECT_GATE_BLOCKED_BY_DOCUMENT')
     expect(prepared.factBase).toContain('| 下层门禁 | BLOCKED |')
     expect(prepared.factBase).toContain('| 项目级门禁 | BLOCKED |')
+  })
+
+  it('writes authoritative relation metrics and rejects contradictory model counts', async () => {
+    const generatedAt = '2026-08-20T00:00:00.000Z'
+    const registry: ProjectRegistry = {
+      protocolVersion: SYSTEM_SCAN_PROTOCOL,
+      generatedAt,
+      workspaceRoot: '.',
+      discoveryMaxDepth: 3,
+      projectCount: 0,
+      projects: [],
+      skippedDirectories: [],
+    }
+    const indexes: IndexManifest = { protocolVersion: SYSTEM_SCAN_PROTOCOL, generatedAt, records: [] }
+    const evidence: SystemEvidenceBundle = { protocolVersion: SYSTEM_SCAN_PROTOCOL, generatedAt, records: [] }
+    const relations = buildSystemRelationCatalog(registry, evidence)
+    const initial = validateSystemArtifacts(registry, indexes, generatedAt, evidence)
+    const factBase = renderSystemFactBase(registry, indexes, evidence, initial)
+      .replace('## 1. 当前目录性质', '模型声称完整关系候选目录（367 条，内部 157 / 未解析 210）。\n\n## 1. 当前目录性质')
+    const prepared = prepareSynthesizedSystemArtifacts(registry, indexes, evidence, relations, generatedAt, await loadProtocolPack(), {
+      factBase,
+      diagrams: {
+        systemContext: `${renderSystemContextDiagram(registry.projects, evidence)}\n%% /Users/example/workspace`,
+        internalRelations: renderInternalRelationsDiagram(registry.projects, evidence),
+        entryOverview: renderEntryOverviewDiagram(registry.projects, evidence),
+      },
+    })
+
+    expect(prepared.factBase).toContain('| 关系候选总数 | 0 |')
+    expect(prepared.factBase).toContain('| 内部关系数 | 0 |')
+    expect(prepared.factBase).toContain('| 未解析关系数 | 0 |')
+    expect(prepared.validation.status).toBe('FAILED')
+    expect(prepared.validation.issues.map(issue => issue.code)).toContain('SYSTEM_RELATION_METRIC_MISMATCH')
+    expect(prepared.validation.issues.map(issue => issue.code)).toContain('SYSTEM_LOCAL_PATH_LEAK')
   })
 })

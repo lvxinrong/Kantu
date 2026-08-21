@@ -10,11 +10,13 @@ import {
   type IndexManifest,
   type IndexRecord,
   type ProjectRecord,
+  type ProjectRelationCandidate,
   type ProjectSystemEvidence,
   type SystemEvidenceBundle,
   type SystemScanProgress,
 } from '../contracts/system-scan.js'
 import { collectSafeProjectMetadata } from './project-metadata.js'
+import { SYSTEM_RELATION_TYPES } from './relations.js'
 
 type Agent = ToolExecutionInput['agent']
 
@@ -70,12 +72,29 @@ const EVIDENCE_FIELDS = [
 const EVIDENCE_OUTPUT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: [...EVIDENCE_FIELDS, 'scopeStatus', 'scopeViolations'],
+  required: [...EVIDENCE_FIELDS, 'relationCandidates', 'scopeStatus', 'scopeViolations'],
   properties: {
     ...Object.fromEntries(EVIDENCE_FIELDS.map(field => [field, {
       type: 'array',
       items: { type: 'string' },
     }])),
+    relationCandidates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['targetAlias', 'relationType', 'evidenceStrength', 'description', 'evidencePaths', 'runtimeStatus'],
+        properties: {
+          targetAlias: { type: 'string' },
+          targetProjectKey: { type: 'string' },
+          relationType: { type: 'string', enum: [...SYSTEM_RELATION_TYPES] },
+          evidenceStrength: { type: 'string', enum: ['DIRECT_SOURCE', 'CONFIGURATION', 'NAME_MATCH'] },
+          description: { type: 'string' },
+          evidencePaths: { type: 'array', items: { type: 'string' } },
+          runtimeStatus: { type: 'string', enum: ['UNCONFIRMED'] },
+        },
+      },
+    },
     scopeStatus: {
       type: 'string',
       enum: ['CLEAN', 'VIOLATION'],
@@ -96,10 +115,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function redact(value: string, maxLength = 800): string {
   return value
     .replace(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*/giu, '<redacted-private-key>')
-    .replace(/jdbc:[a-z0-9]+:\/\/[^\s|`]+/giu, 'jdbc:<redacted>')
-    .replace(/https?:\/\/[^\s|`]+/giu, 'https://<redacted-host>')
-    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/gu, '<redacted-ip>')
-    .replace(/((?:api[ _-]?key|secret|client[ _-]?secret|password|token)\s*[=:]\s*)["']?[A-Za-z0-9_./+-]{8,}/giu, '$1<redacted>')
+    .replace(/((?:https?|jdbc:[a-z0-9]+):\/\/)[^/\s:@]+:[^@\s/]+@/giu, '$1<redacted-credentials>@')
+    .replace(/((?:api[ _.-]?key|access[ _.-]?key|secret|credential|client[ _.-]?secret|password|passwd|token)\s*[=:]\s*)["']?[^\s,;"'<>]{8,}/giu, '$1<redacted>')
+    .replace(/((?:Authorization\s*[:=]\s*|Bearer\s+))[A-Za-z0-9._~+/=-]{8,}/giu, '$1<redacted>')
+    .replace(/(<(?:password|passwd|secret|token|accessKey|secretKey)>)[\s\S]*?(<\/[^>]+>)/giu, '$1<redacted>$2')
     .slice(0, maxLength)
 }
 
@@ -110,6 +129,32 @@ function stringArray(value: unknown): string[] {
     .map(item => redact(item.trim()))
     .filter(Boolean)
     .slice(0, 100)
+}
+
+function relationCandidates(value: unknown, knownProjectKeys: Set<string>): ProjectRelationCandidate[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap(item => {
+    if (!isObject(item)
+      || typeof item.targetAlias !== 'string'
+      || typeof item.relationType !== 'string'
+      || !SYSTEM_RELATION_TYPES.includes(item.relationType as never)
+      || (item.evidenceStrength !== 'DIRECT_SOURCE' && item.evidenceStrength !== 'CONFIGURATION' && item.evidenceStrength !== 'NAME_MATCH')
+      || typeof item.description !== 'string') return []
+    const paths = stringArray(item.evidencePaths).slice(0, 20)
+    if (paths.length === 0) return []
+    const requestedKey = typeof item.targetProjectKey === 'string' && knownProjectKeys.has(item.targetProjectKey)
+      ? item.targetProjectKey
+      : undefined
+    return [{
+      targetAlias: redact(item.targetAlias.trim()),
+      ...requestedKey === undefined ? {} : { targetProjectKey: requestedKey },
+      relationType: item.relationType as ProjectRelationCandidate['relationType'],
+      evidenceStrength: item.evidenceStrength as ProjectRelationCandidate['evidenceStrength'],
+      description: redact(item.description.trim()),
+      evidencePaths: paths,
+      runtimeStatus: 'UNCONFIRMED' as const,
+    }]
+  }).slice(0, 100)
 }
 
 function parseJsonText(value: string): unknown {
@@ -167,6 +212,7 @@ function skippedEvidence(project: ProjectRecord, index: IndexRecord | undefined,
     capabilityCandidates: [],
     evidencePaths: [],
     conflicts: [],
+    relationCandidates: [],
     scopeStatus: 'CLEAN',
     scopeViolations: [],
     failureReason: reason,
@@ -358,6 +404,8 @@ export class DshSystemAnalyzer implements SystemAnalyzer {
     }
 
     let completed = 0
+    const knownProjectKeys = new Set(projects.map(project => project.projectKey))
+    const knownProjectIdentities = projects.map(project => ({ projectKey: project.projectKey, projectDir: project.projectDir }))
     const records = await mapLimit(projects, this.concurrency, async project => {
       const index = indexes.records.find(item => item.projectKey === project.projectKey)
       if (index?.status !== 'FRESH' || index.mcpProject === undefined) {
@@ -385,7 +433,7 @@ export class DshSystemAnalyzer implements SystemAnalyzer {
           omittedFiles: 0,
           boundary: 'PROJECT_ROOT_ONLY' as const,
         }))
-        const prompt = `你是 ArchScope 系统级只读证据 worker。只分析一个工程，不建立全局结论，不写文件，不判断生产启用。\n\n工程键：${project.projectKey}\n工程相对路径：${project.projectDir}\n工程绝对路径：${projectRoot}\n唯一允许使用的 codebase-memory project：${index.mcpProject}\n\nArchScope 已通过 get_architecture 获取代码图谱基线，并在父进程中通过工程根目录边界检查、符号链接拒绝、大小限制和敏感值脱敏，确定性采集了配置/文档元数据。你仍需按需调用允许的 codebase-memory 只读工具补充代码证据，不得读取或查询其他 MCP project。\n\n代码图谱基线：\n${architectureBaseline}\n\n安全元数据基线：\n${JSON.stringify(metadataBaseline)}\n\n从架构、入口、路由、依赖、数据访问、部署配置和基础设施角度采集粗粒度证据。代码定义和调用关系以 codebase-memory 为准；manifest、README、CI、容器和部署配置可引用安全元数据基线。每条结论都附源码相对路径或图谱对象；完整 URL、IP、账号、密钥、token、JDBC 地址必须脱敏。\n\n返回结构化结果：工程类型候选、启动/用户入口、出站依赖、数据资产、基础设施、别名/服务名、能力候选、证据路径、冲突与不确定项，以及 scopeStatus 和 scopeViolations。没有证据时返回空数组，不要猜测。未发生真实越界时必须返回 scopeStatus=CLEAN 且 scopeViolations=[]；禁止在 scopeViolations 中填写“无违规”或工具使用说明。`
+        const prompt = `你是 ArchScope 系统级只读证据 worker。只分析一个工程，不建立全局结论，不写文件，不判断生产启用。\n\n工程键：${project.projectKey}\n工程相对路径：${project.projectDir}\n工程绝对路径：${projectRoot}\n唯一允许使用的 codebase-memory project：${index.mcpProject}\n工作区已知工程身份（只能用于目标身份映射，不能读取这些工程）：${JSON.stringify(knownProjectIdentities)}\n\nArchScope 已通过 get_architecture 获取代码图谱基线，并在父进程中通过工程根目录边界检查、符号链接拒绝、大小限制和凭据保护，确定性采集了配置/文档元数据。你仍需按需调用允许的 codebase-memory 只读工具补充代码证据，不得读取或查询其他 MCP project。\n\n代码图谱基线：\n${architectureBaseline}\n\n安全元数据基线：\n${JSON.stringify(metadataBaseline)}\n\n从架构、入口、路由、依赖、数据访问、部署配置和基础设施角度采集粗粒度证据。代码定义和调用关系以 codebase-memory 为准；manifest、README、CI、容器和部署配置可引用安全元数据基线。每条结论都附源码相对路径或图谱对象；服务名、域名、IP、路由、表名、Topic、Queue 与 JDBC 结构是本地事实，应保留用于关系核对，但密码、Token、API Key、私钥、Bearer Token、嵌入式账号密码和签名参数不得输出。\n\n除原始 outboundDependencies 外，必须把每条可审查关系单独写入 relationCandidates。targetAlias 使用源码中的服务/工程/通道名称；只有与上面已知工程身份明确匹配时才填写 targetProjectKey。relationType 区分 FEIGN_CLIENT、HTTP_ROUTE_FAMILY、MAVEN_API_DEPENDENCY、SDK_DEPENDENCY、MESSAGE_CHANNEL、SHARED_DATA_ASSET、CONFIGURED_ENDPOINT、NAME_MATCH_CANDIDATE、OTHER；直接调用/契约使用 DIRECT_SOURCE，配置指向使用 CONFIGURATION，仅名称相似使用 NAME_MATCH。每条关系必须携带 description、evidencePaths，runtimeStatus 固定 UNCONFIRMED。不要把框架普通依赖伪装成跨工程关系。\n\n返回结构化结果：工程类型候选、启动/用户入口、出站依赖、结构化关系候选、数据资产、基础设施、别名/服务名、能力候选、证据路径、冲突与不确定项，以及 scopeStatus 和 scopeViolations。没有证据时返回空数组，不要猜测。未发生真实越界时必须返回 scopeStatus=CLEAN 且 scopeViolations=[]；禁止在 scopeViolations 中填写“无违规”或工具使用说明。`
         run = await service.start(this.evidenceProvider, {
           label: `archscope-system-evidence:${project.projectKey}`,
           prompt: [{ type: 'text', text: prompt }],
@@ -408,6 +456,7 @@ export class DshSystemAnalyzer implements SystemAnalyzer {
           mcpProject: index.mcpProject,
           status: 'COLLECTED',
           ...Object.fromEntries(EVIDENCE_FIELDS.map(field => [field, stringArray(structured[field])])),
+          relationCandidates: relationCandidates(structured.relationCandidates, knownProjectKeys),
           scopeStatus,
           scopeViolations: scopeStatus === 'VIOLATION'
             ? stringArray(structured.scopeViolations)

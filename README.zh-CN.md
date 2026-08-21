@@ -43,7 +43,7 @@ ArchScope 不会让多个 Agent 在没有共同语境的情况下各自解释系
 
 ### 模型负责推理，程序负责纪律
 
-适合判断和归纳的工作交给模型；状态机、任务计划、契约校验、身份解析、批次恢复和敏感信息检查交给确定性程序。
+适合判断和归纳的工作交给模型；状态机、任务计划、契约校验、身份解析、批次恢复、精确关系统计、可移植路径检查和凭据秘密检查交给确定性程序。
 
 ### 从第一天支持多仓系统
 
@@ -78,7 +78,7 @@ flowchart LR
     D --> F["模块专题"]
     D --> G["代码链路"]
     C -. "事实继承" .-> D
-    H["证据规则与脱敏"] -.-> C
+    H["证据保真与凭据规则"] -.-> C
     H -.-> D
     I["契约、门禁与校验"] -.-> C
     I -.-> D
@@ -121,15 +121,16 @@ ArchScope 计划让用户通过 Harness 工具用自然语言表达目标。当�
 
 ```text
 /archscope system [--refresh]
-/archscope project <project-key> [--refresh]
-/archscope status [run-id]
-/archscope resume [run-id]
 /archscope help
 ```
 
-命令同时接受中文子命令别名。Slash command 使用严格解析，不猜测错误输入；参数不合法时只返回用法说明。`system` 会依次完成工程发现、独立索引和逐工程证据采集，随后自动把运行交给当前 DSH 主 Agent；主 Agent加载完整系统协议和结构化 evidence，综合事实底座与三张图，再交由插件执行确定性校验。整个过程会在主对话中汇报阶段与四分位进度。首次扫描或 `--refresh` 可能耗时较长；普通扫描会按工程绝对根路径复用已有索引。已完成或正在等待主 Agent 综合且协议版本一致的运行可以复用，`BLOCKED` 运行会在下次执行时重新尝试。
+命令同时接受 `系统级扫描` 与 `帮助` 两个中文子命令别名。Slash command 使用严格解析，不猜测错误输入；参数不合法时只返回用法说明。`system` 会依次完成工程发现、独立索引和逐工程证据采集，随后自动把运行交给当前 DSH 主 Agent；主 Agent 加载完整系统协议和结构化 evidence，综合事实底座与三张图，再交由插件执行确定性校验。整个过程会在主对话中汇报阶段与四分位进度。首次扫描或 `--refresh` 可能耗时较长；普通扫描会按工程绝对根路径复用已有索引。已完成或正在等待主 Agent 综合且协议版本一致的运行可以复用，`BLOCKED` 运行会在下次执行时重新尝试。
 
-源码视角的索引和证据全部完成后，系统门禁可以进入 `READY`；这仍不等于生产拓扑已得到确认。缺失 MCP 工具、索引失败、worker 失败或越界读取都会让门禁保持 `BLOCKED`。`system`、`status` 和 `help` 已可执行；`project` 与 `resume` 已保留命令契约，在对应执行流程完成前保持失败关闭。
+DeepSeek Harness 当前不会在完全空白的新会话中分发 Slash Command。请先选择已有会话，或发送一条普通消息创建会话后再运行 `/archscope`。命令候选项本身也会显示这项限制，避免第一次交互静默失败。
+
+`/archscope` 与 `/archscope help` 会把使用指南作为正常的助手回复发布到对话中，命令结果本身不再承载长文本，避免帮助内容看起来像工具卡片或 Think 记录。
+
+源码视角的索引和证据全部完成后，系统门禁可以进入 `READY`；这仍不等于生产拓扑已得到确认。缺失 MCP 工具、索引失败、worker 失败或越界读取都会让门禁保持 `BLOCKED`。`system` 与 `help` 是当前公开的 Slash Command；项目级扫描与恢复流程在实现前不再出现在用户帮助中。机器可读状态继续通过 `archscope_status` 提供给模型编排，不再作为手动 Slash 子命令暴露。
 
 后续模型工具会围绕以下能力继续扩展：
 
@@ -160,9 +161,11 @@ archscope_docs/
 │   ├── evidence/
 │   │   ├── index.json
 │   │   └── <project-key>.json
+│   ├── relations.json
 │   ├── protocol-lock.json
 │   ├── synthesis.json
 │   ├── validation.json
+│   ├── history.json
 │   └── diagrams/
 │       ├── 01-system-context.mmd
 │       ├── 02-internal-relations.mmd
@@ -171,6 +174,10 @@ archscope_docs/
 │   ├── latest.json
 │   └── <run-id>/
 │       ├── state.json
+│       ├── system/                    # 不可变终态快照
+│       │   ├── 00-system-fact-base.md
+│       │   ├── evidence/
+│       │   └── diagrams/
 │       └── synthesis/
 │           └── attempt-<n>/
 │               ├── attempt.json
@@ -178,15 +185,17 @@ archscope_docs/
 │               └── diagrams/
 ```
 
-每个工程的原始结构化证据先写入独立文件，系统事实底座只由当前 DSH 主 Agent 综合，避免并行 worker 互相污染或竞争写文档。大型工作区的初始 evidence 被压缩时，主写者可以按需补取 1-8 个高影响工程的完整持久化证据，但不会获得文件系统或代码搜索权限。主 Agent 负责跨工程理解、术语统一、关系判断、冲突仲裁和最终表达；插件中的正则分类与名称匹配只能作为候选输入，不能直接成为最终结论。
+`system/` 始终代表最近一次校验通过并正式发布的事实底座。新扫描会先把工程注册表、索引和 evidence 暂存在自己的 `runs/<run-id>/system/` 中，因此扫描进行中或最终校验失败都不会覆盖上一版可用文档。每次进入终态的系统综合都会获得 `S0001` 这样的递增事实版本；终态快照和每次综合尝试默认全部保留。`system/history.json` 负责关联事实版本、run id、校验与门禁状态、不可变产物路径，以及当前发布版本。
 
-插件会记录主写者会话、模型和输入输出摘要到 `system/synthesis.json`，并把每次提交的草稿及校验结果保存在当前 run 的 `synthesis/attempt-<n>/` 目录。确定性校验会覆盖文档结构、证据边界、完整内部域名、原始数据资产标识、图表边语义，以及真实“阻断项目级”问题与下层门禁是否一致。具体路由、代码符号、配置与实现细节仍保留在逐工程 evidence JSON 中。源码证据齐备且没有真实项目级阻断项时，文档可以标记为“完整（源码视角）”并打开项目级门禁；运行态事实仍会明确标记为待确认，综合校验通过也不等于生产架构已经得到证明。
+每个工程的原始结构化证据先写入独立文件，系统事实底座只由当前 DSH 主 Agent 综合，避免并行 worker 互相污染或竞争写文档。`auto` 模式会在 evidence 不超过 512 KiB 时全量注入；超过阈值后改用有界摘要，主写者可按需补取 1-8 个高影响工程的完整持久化证据，但不会获得文件系统或代码搜索权限。与此同时，每个 worker 必须输出类型化关系候选，ArchScope 会将其完整、无裁剪地聚合到 `system/relations.json`，并始终全量注入系统综合。主 Agent 负责跨工程理解、术语统一、关系判断、冲突仲裁和最终表达；插件中的正则分类与名称匹配只能作为候选输入，不能直接成为最终结论。
 
-代码定义、路由和调用关系优先由 codebase-memory 提供。对于图谱容易遗漏的 manifest、README、CI、容器和部署配置，ArchScope 会在父进程中执行工程根目录约束、符号链接拒绝、文件与总量限制以及敏感值脱敏，再把安全元数据基线交给证据 worker。worker 不会获得任意文件读取、shell 或写入能力。
+插件会记录主写者会话、模型和输入输出摘要到 `system/synthesis.json`，并把每次提交的草稿及校验结果保存在当前 run 的 `synthesis/attempt-<n>/` 目录。确定性校验会覆盖文档结构、证据边界、正文与机器关系统计是否一致、本机绝对路径、真实凭据泄漏、图表边语义，以及真实“阻断项目级”问题与下层门禁是否一致。具体路由、代码符号、配置与实现细节仍保留在逐工程 evidence JSON 中。源码证据齐备且没有真实项目级阻断项时，文档可以标记为“完整（源码视角）”并打开项目级门禁；运行态事实仍会明确标记为待确认，综合校验通过也不等于生产架构已经得到证明。
+
+代码定义、路由和调用关系优先由 codebase-memory 提供。对于图谱容易遗漏的 manifest、README、CI、容器和部署配置，ArchScope 会在父进程中执行工程根目录约束、符号链接拒绝、文件与总量限制以及真实凭据移除，再把安全元数据基线交给证据 worker。本地事实产物会保留真实服务名、域名、IP、路由、表名、Topic、Queue 等架构标识。worker 不会获得任意文件读取、shell 或写入能力。
 
 ### 系统级 Protocol Pack
 
-ArchScope 将系统级分析知识作为版本化的 `protocol/` 目录随插件发布。协议包包含证据、工程身份、索引状态、22 章节系统文档与层级门禁的机器契约；包含分析边界、脱敏、输出路径和校验策略；也包含会被真实注入当前 DSH 主 Agent 的完整系统主写者指令，以及只读 evidence worker 的聚焦提示。
+ArchScope 将系统级分析知识作为版本化的 `protocol/` 目录随插件发布。协议包包含证据、工程身份、索引状态、22 章节系统文档与层级门禁的机器契约；包含分析边界、本地事实保真与凭据处理、输出路径和校验策略；也包含会被真实注入当前 DSH 主 Agent 的完整系统主写者指令，以及只读 evidence worker 的聚焦提示。
 
 插件会在运行时加载并校验这份目录。每次扫描都会生成 `system/protocol-lock.json`，记录协议包版本、manifest 以及每个资源的 SHA-256 摘要。协议包发生变化后，ArchScope 会创建新运行，不会静默复用旧规则下的结果。适合程序执行的约束已经迁入 TypeScript 并由测试守护；Markdown 是可审阅的协议正文，而不是无人执行的附件。
 
@@ -201,6 +210,8 @@ ArchScope 将系统级分析知识作为版本化的 `protocol/` 目录随插件
 | `indexMode` | `moderate` | 新建或刷新索引时使用的 `fast` / `moderate` / `full` 模式 |
 | `evidenceProvider` | `spawn` | 用于逐工程只读证据任务的 DSH subagent provider |
 | `systemConcurrency` | `4` | 索引和证据任务的最大并发数 |
+| `evidenceContextMode` | `auto` | `auto` 在字节阈值内全量注入，`full` 始终全量注入，`bounded` 始终压缩 |
+| `fullEvidenceMaxBytes` | `524288` | `auto` 模式全量注入 evidence 的 UTF-8 字节上限 |
 | `registerCommand` | `true` | 注册可选的 `/archscope` 命令 |
 | `registerSystemScanTool` | `true` | 注册 `archscope_scan_system` |
 | `registerStatusTool` | `true` | 注册 `archscope_status` |
@@ -270,7 +281,8 @@ ArchScope 将遵循 DeepSeek Harness 的官方插件发现约定。公开发布�
 - **确定性门禁**：能由程序判断的规则，不依赖模型自觉遵守。
 - **上下文隔离**：单项目和单模块任务只接收完成任务所需的最小上下文。
 - **可恢复执行**：长时间、多项目扫描必须能够查看状态、记录失败并从中断处继续。
-- **安全默认值**：默认不修改业务代码，不输出密钥、令牌、密码、私钥或完整敏感端点。
+- **本地事实保真**：默认产物精确保留架构标识；未来的分享脱敏只能生成派生副本，不改写事实底座。
+- **安全默认值**：默认不修改业务代码，不输出密钥、令牌、密码、私钥、API Key 或嵌入式凭据。
 - **模型与工具可替换**：核心协议不绑定某个特定模型、索引引擎或代码搜索工具。
 
 ## ArchScope 不是什么
@@ -316,6 +328,7 @@ ArchScope 的目标是提供一份更可信的认知起点，以及一条可以�
 - [ ] 第三方工程类型与报告 Profile
 - [ ] 自定义证据源和组织级规则包
 - [ ] Headless、Web 与自动化工作流集成
+- [ ] 分享安全/公开发布导出命令：生成脱敏副本但不修改本地事实产物
 - [ ] 发布预构建 npm bundle，并验证标准安装和移除流程
 - [ ] 添加 `dsh-plugin` GitHub Topic，并验证生态发现入口可检索 ArchScope
 

@@ -1,0 +1,23 @@
+{
+  "contractId": "archscope/contract/system-history/v1",
+  "version": "1.0.0",
+  "revisionPattern": "^S\\d{4,}$",
+  "currentArtifactRoot": "system",
+  "immutableArtifactPattern": "runs/<run-id>/system",
+  "historyArtifact": "system/history.json",
+  "retention": "KEEP_ALL",
+  "publishCurrentWhenValidation": ["PASSED"],
+  "requiredRevisionFields": [
+    "revision",
+    "runId",
+    "generatedAt",
+    "status",
+    "gate",
+    "validation",
+    "protocol",
+    "synthesisAttempt",
+    "outputDigest",
+    "publishedAsCurrent",
+    "artifactRoot"
+  ]
+}

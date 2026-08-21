@@ -7,6 +7,7 @@ const LAYER_STATE_CONTRACT = 'archscope/contract/layer-state-machine/v1'
 
 interface SystemDocumentContract {
   metadata: Record<string, string[]>
+  machineRelationFields: string[]
   headings: string[]
   requiredArtifacts: string[]
   forbiddenHeadingPatterns: string[]
@@ -18,11 +19,16 @@ interface SystemDocumentContract {
   boundaryRules: {
     maxDocumentCharacters: number
     requiredDetailPointer: string
+    requiredRelationPointer: string
     detailSensitiveSections: string[]
     maxTableRowsBySection: Record<string, number>
     forbiddenDetailPatterns: Array<{ id: string, source: string, flags: string }>
     minTrustedConclusionRows: number
   }
+}
+
+export interface SystemDocumentValidationContext {
+  relationMetrics?: Record<string, string>
 }
 
 interface EvidenceContract {
@@ -85,11 +91,9 @@ export function validateSensitiveContent(
   location = 'system report',
 ): ValidationIssue[] {
   const evidence = parseProtocolContract<EvidenceContract>(pack, EVIDENCE_CONTRACT)
-  const skipMarkers = evidence.redaction.skipMarkers.map(marker => marker.toLowerCase())
   const patterns = evidence.redaction.patterns.map(item => ({ id: item.id, regex: new RegExp(item.source, item.flags) }))
   const issues: ValidationIssue[] = []
   for (const [index, line] of content.split(/\r?\n/gu).entries()) {
-    if (skipMarkers.some(marker => line.toLowerCase().includes(marker))) continue
     for (const pattern of patterns) {
       pattern.regex.lastIndex = 0
       if (!pattern.regex.test(line)) continue
@@ -100,10 +104,132 @@ export function validateSensitiveContent(
   return issues
 }
 
+export function validatePortableContent(
+  content: string,
+  location = 'system report',
+): ValidationIssue[] {
+  const localPathMatch = /(?:\/Users\/[^\s|`]+|\/home\/[^\s|`]+|\/workspace(?:\/[^\s|`]*)?|\b[A-Za-z]:\\Users\\[^\s|`]+)/u.exec(content)
+  return localPathMatch === null
+    ? []
+    : [{
+        severity: 'ERROR',
+        code: 'SYSTEM_LOCAL_PATH_LEAK',
+        message: `${location} contains a machine-local absolute path: ${localPathMatch[0]}.`,
+      }]
+}
+
+function firstInteger(value: string | undefined): number | undefined {
+  const match = value === undefined ? undefined : /\d+/u.exec(value)
+  return match === undefined || match === null ? undefined : Number(match[0])
+}
+
+function validateRelationMetricClaims(content: string, values: Record<string, string>): ValidationIssue[] {
+  const issues: ValidationIssue[] = []
+  const expected = {
+    total: Number(values['关系候选总数']),
+    internal: Number(values['内部关系数']),
+    unresolved: Number(values['未解析关系数']),
+    internalDirect: Number(/DIRECT_SOURCE=(\d+)/u.exec(values['内部关系构成'] ?? '')?.[1]),
+    internalConfiguration: Number(/CONFIGURATION=(\d+)/u.exec(values['内部关系构成'] ?? '')?.[1]),
+    internalNameMatch: Number(/NAME_MATCH=(\d+)/u.exec(values['内部关系构成'] ?? '')?.[1]),
+    unresolvedDirect: Number(/DIRECT_SOURCE=(\d+)/u.exec(values['未解析关系构成'] ?? '')?.[1]),
+    unresolvedConfiguration: Number(/CONFIGURATION=(\d+)/u.exec(values['未解析关系构成'] ?? '')?.[1]),
+    unresolvedNameMatch: Number(/NAME_MATCH=(\d+)/u.exec(values['未解析关系构成'] ?? '')?.[1]),
+  }
+  const machineFields = new Set(Object.keys(values))
+  const claimPatterns: Array<{ label: string, expected: number, regex: RegExp }> = [
+    { label: '关系候选总数', expected: expected.total, regex: /(?:关系候选目录|关系目录)[^\d\n|]{0,12}(\d+)\s*条/gu },
+    { label: '内部关系数', expected: expected.internal, regex: /内部(?:关系)?\s*[：:=]?\s*(\d+)\s*(?:条|\/|／|，|,|\))/gu },
+    { label: '未解析关系数', expected: expected.unresolved, regex: /未解析(?:关系)?\s*[：:=]?\s*(\d+)/gu },
+    { label: '内部 DIRECT_SOURCE', expected: expected.internalDirect, regex: /(\d+)\s*条\s*DIRECT_SOURCE\s*内部关系/gu },
+  ]
+  for (const [lineIndex, line] of content.split(/\r?\n/gu).entries()) {
+    const cells = /^\|/u.test(line.trim()) ? markdownTableCells(line) : []
+    if (cells[0] !== undefined && machineFields.has(cells[0])) continue
+    for (const claim of claimPatterns) {
+      claim.regex.lastIndex = 0
+      for (const match of line.matchAll(claim.regex)) {
+        const actual = Number(match[1])
+        if (actual !== claim.expected) {
+          issues.push({
+            severity: 'ERROR',
+            code: 'SYSTEM_RELATION_METRIC_MISMATCH',
+            message: `${claim.label} is ${actual} in the document at line ${lineIndex + 1}, but relations.json requires ${claim.expected}.`,
+          })
+        }
+      }
+    }
+  }
+
+  const internalSection = markdownSection(content, '## 9. 系统内部跨项目关系与调用边界')
+  const internalStrengthClaims: Array<{ label: string, expected: number, regex: RegExp }> = [
+    { label: '内部 DIRECT_SOURCE', expected: expected.internalDirect, regex: /(\d+)\s*条\s*DIRECT_SOURCE\b/gu },
+    { label: '内部 CONFIGURATION', expected: expected.internalConfiguration, regex: /(\d+)\s*条\s*CONFIGURATION\b/gu },
+    { label: '内部 NAME_MATCH', expected: expected.internalNameMatch, regex: /(\d+)\s*条\s*NAME_MATCH\b/gu },
+  ]
+  for (const claim of internalStrengthClaims) {
+    for (const match of internalSection.matchAll(claim.regex)) {
+      if (Number(match[1]) !== claim.expected) {
+        issues.push({
+          severity: 'ERROR',
+          code: 'SYSTEM_RELATION_METRIC_MISMATCH',
+          message: `${claim.label} is ${match[1]} in section 9, but relations.json requires ${claim.expected}.`,
+        })
+      }
+    }
+  }
+
+  const typeCounts = Object.fromEntries((values['关系类型构成'] ?? '').split('；').flatMap(item => {
+    const match = /^([A-Z_]+)=(\d+)$/u.exec(item)
+    return match?.[1] === undefined ? [] : [[match[1], Number(match[2])]]
+  })) as Record<string, number>
+  for (const [type, expectedCount] of Object.entries(typeCounts)) {
+    const escaped = type.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+    const patterns = [new RegExp(`(\\d+)\\s*条\\s*${escaped}\\b`, 'gu'), new RegExp(`${escaped}\\s*[=:：]\\s*(\\d+)`, 'gu')]
+    for (const line of content.split(/\r?\n/gu)) {
+      const cells = /^\|/u.test(line.trim()) ? markdownTableCells(line) : []
+      if (cells[0] !== undefined && machineFields.has(cells[0])) continue
+      for (const pattern of patterns) {
+        for (const match of line.matchAll(pattern)) {
+          if (Number(match[1]) !== expectedCount) {
+            issues.push({
+              severity: 'ERROR',
+              code: 'SYSTEM_RELATION_TYPE_METRIC_MISMATCH',
+              message: `${type} is ${match[1]} in the document, but relations.json requires ${expectedCount}.`,
+            })
+          }
+        }
+      }
+    }
+  }
+
+  const coverage = markdownSection(content, '## 19. 证据覆盖率摘要')
+  const coverageRows = new Map(coverage.split(/\r?\n/gu)
+    .filter(line => /^\|/u.test(line.trim()))
+    .map(markdownTableCells)
+    .filter(cells => cells.length > 1)
+    .map(cells => [cells[0] ?? '', cells]))
+  const checkCoverageRow = (label: string, expectedValues: number[]) => {
+    const cells = coverageRows.get(label)
+    const actualValues = cells?.slice(1, 5).map(firstInteger)
+    if (actualValues === undefined || actualValues.some((value, index) => value !== expectedValues[index])) {
+      issues.push({
+        severity: 'ERROR',
+        code: 'SYSTEM_RELATION_COVERAGE_MISMATCH',
+        message: `${label} coverage must be total/high/medium/low=${expectedValues.join('/')} from relations.json.`,
+      })
+    }
+  }
+  checkCoverageRow('内部关系', [expected.internal, expected.internalDirect, expected.internalConfiguration, expected.internalNameMatch])
+  checkCoverageRow('外部依赖', [expected.unresolved, expected.unresolvedDirect, expected.unresolvedConfiguration, expected.unresolvedNameMatch])
+  return issues
+}
+
 export function validateSystemDocument(
   content: string,
   artifactPaths: Iterable<string>,
   pack: LoadedProtocolPack,
+  context: SystemDocumentValidationContext = {},
 ): ValidationIssue[] {
   const contract = parseProtocolContract<SystemDocumentContract>(pack, SYSTEM_DOCUMENT_CONTRACT)
   const layerState = parseProtocolContract<LayerStateContract>(pack, LAYER_STATE_CONTRACT)
@@ -118,9 +244,27 @@ export function validateSystemDocument(
     const value = metadata[key]
     if (value === undefined) {
       issues.push({ severity: 'ERROR', code: 'SYSTEM_METADATA_MISSING', message: `Missing system metadata row: ${key}.` })
+    } else if (key === '事实版本') {
+      if (!/^(?:PENDING|S\d{4,})$/u.test(value)) {
+        issues.push({ severity: 'ERROR', code: 'SYSTEM_METADATA_INVALID', message: `Invalid system fact-base revision: ${value}.` })
+      }
     } else if (!allowed.includes(value)) {
       issues.push({ severity: 'ERROR', code: 'SYSTEM_METADATA_INVALID', message: `Invalid system metadata value for ${key}: ${value}.` })
     }
+  }
+  if (context.relationMetrics !== undefined) {
+    const actual = metadataValues(content, contract.machineRelationFields)
+    for (const field of contract.machineRelationFields) {
+      const expected = context.relationMetrics[field]
+      if (expected === undefined || actual[field] !== expected) {
+        issues.push({
+          severity: 'ERROR',
+          code: 'SYSTEM_RELATION_METRIC_MISMATCH',
+          message: `Machine relation field ${field} must equal relations.json (${expected ?? 'MISSING'}).`,
+        })
+      }
+    }
+    issues.push(...validateRelationMetricClaims(content, context.relationMetrics))
   }
   if (metadata['下层门禁'] === 'READY') {
     for (const [field, allowed] of Object.entries(layerState.transitions.systemToProject)) {
@@ -154,8 +298,12 @@ export function validateSystemDocument(
       message: `System report exceeds ${contract.boundaryRules.maxDocumentCharacters} characters; project details must move to evidence artifacts.`,
     })
   }
+  issues.push(...validatePortableContent(content))
   if (!content.includes(contract.boundaryRules.requiredDetailPointer)) {
     issues.push({ severity: 'ERROR', code: 'SYSTEM_DETAIL_POINTER_MISSING', message: 'System report must point readers to the raw evidence bundle.' })
+  }
+  if (!content.includes(contract.boundaryRules.requiredRelationPointer)) {
+    issues.push({ severity: 'ERROR', code: 'SYSTEM_RELATION_POINTER_MISSING', message: 'System report must point readers to the complete relation catalog.' })
   }
   for (const [heading, maxRows] of Object.entries(contract.boundaryRules.maxTableRowsBySection)) {
     const rows = markdownTableDataRows(markdownSection(content, heading))

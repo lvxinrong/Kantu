@@ -18,8 +18,6 @@ describe('parseArchScopeCommand', () => {
     ['系统级扫描', { kind: 'system.scan', refresh: false }],
     ['project sfa-backend', { kind: 'project.scan', projectKey: 'sfa-backend', refresh: false }],
     ['项目级扫描 sfa-backend --refresh', { kind: 'project.scan', projectKey: 'sfa-backend', refresh: true }],
-    ['status', { kind: 'run.status' }],
-    ['状态 run-1', { kind: 'run.status', runId: 'run-1' }],
     ['resume run-1', { kind: 'run.resume', runId: 'run-1' }],
     ['继续', { kind: 'run.resume' }],
   ])('parses %j into a stable intent', (input, intent) => {
@@ -30,7 +28,7 @@ describe('parseArchScopeCommand', () => {
     'system now',
     'project',
     'project --refresh',
-    'status one two',
+    'status',
     'resume --refresh',
     'unknown',
   ])('rejects invalid input %j without guessing', (input) => {
@@ -47,6 +45,7 @@ describe('executeArchScopeIntent', () => {
     async scanSystem() {
       return {
         runId: 'system-1',
+        documentRevision: 'PENDING',
         status: 'AWAITING_SYNTHESIS',
         gate: 'BLOCKED',
         validation: 'NOT_RUN',
@@ -58,20 +57,6 @@ describe('executeArchScopeIntent', () => {
         reused: false,
       }
     },
-    async status() {
-      return {
-        found: true,
-        runId: 'system-1',
-        status: 'BLOCKED',
-        gate: 'BLOCKED',
-        validation: 'PASSED',
-        projectCount: 2,
-        indexedProjectCount: 2,
-        evidenceProjectCount: 1,
-        scopeViolationCount: 0,
-        outputDirectory: 'archscope_docs',
-      }
-    },
   }
 
   it('renders deterministic help', async () => {
@@ -79,13 +64,12 @@ describe('executeArchScopeIntent', () => {
       kind: 'success',
       text: ARCHSCOPE_COMMAND_HELP,
     })
-  })
-
-  it('reports the latest persisted run', async () => {
-    await expect(executeArchScopeIntent({ kind: 'run.status' }, runtime)).resolves.toEqual({
-      kind: 'success',
-      text: expect.stringContaining('system-1'),
-    })
+    expect(ARCHSCOPE_COMMAND_HELP).toContain('系统级定世界观')
+    expect(ARCHSCOPE_COMMAND_HELP).toContain('/archscope system --refresh')
+    expect(ARCHSCOPE_COMMAND_HELP).toContain('空白新会话')
+    expect(ARCHSCOPE_COMMAND_HELP).not.toContain('/archscope project')
+    expect(ARCHSCOPE_COMMAND_HELP).not.toContain('/archscope resume')
+    expect(ARCHSCOPE_COMMAND_HELP).not.toContain('/archscope status')
   })
 
   it('executes the system scan and hands evidence to the current main agent', async () => {
@@ -97,23 +81,16 @@ describe('executeArchScopeIntent', () => {
 
   it('forwards the receiving session workspace to command operations', async () => {
     let scanWorkspace: string | undefined
-    let statusWorkspace: string | undefined
     const scopedRuntime: ArchScopeCommandRuntime = {
       async scanSystem(options) {
         scanWorkspace = options.workspaceRoot
         return runtime.scanSystem(options)
       },
-      async status(runId, options) {
-        statusWorkspace = options?.workspaceRoot
-        return runtime.status(runId, options)
-      },
     }
 
     await executeArchScopeIntent({ kind: 'system.scan', refresh: false }, scopedRuntime, undefined, '/workspace/current')
-    await executeArchScopeIntent({ kind: 'run.status' }, scopedRuntime, undefined, '/workspace/current')
 
     expect(scanWorkspace).toBe('/workspace/current')
-    expect(statusWorkspace).toBe('/workspace/current')
   })
 
   it('runs evidence collection while publishing visible start and main-agent handoff messages', async () => {
@@ -167,11 +144,44 @@ describe('executeArchScopeIntent', () => {
         kind: 'plugin',
         plugin: 'archscope',
         form: 'notice',
-      summary: 'ArchScope 主 Agent 综合 · 1/2 个工程证据已就绪',
+        summary: 'ArchScope 主 Agent 综合 · 1/2 个工程证据已就绪',
       },
       content: [{
         type: 'text',
         text: expect.stringContaining('archscope_get_system_synthesis_context'),
+      }],
+    })
+  })
+
+  it('publishes help as a normal conversational follow-up instead of command-card text', async () => {
+    const queued: unknown[] = []
+    const command = createArchScopeCommand(runtime)
+
+    const result = await command.handler({
+      commandId: 'cmd-archscope-help-1',
+      rawInput: ' help',
+      signal: new AbortController().signal,
+      agent: {
+        followup(message: unknown) {
+          queued.push(message)
+        },
+        session: { header: { cwd: '/workspace/current' } },
+      },
+    } as never)
+
+    expect(result).toEqual({ kind: 'success' })
+    expect(queued).toHaveLength(1)
+    expect(queued[0]).toMatchObject({
+      role: 'user',
+      source: {
+        kind: 'plugin',
+        plugin: 'archscope',
+        form: 'notice',
+        summary: 'ArchScope 使用指南',
+      },
+      content: [{
+        type: 'text',
+        text: expect.stringContaining('normal conversational answer'),
       }],
     })
   })

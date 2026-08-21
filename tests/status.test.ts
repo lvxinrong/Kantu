@@ -7,6 +7,7 @@ describe('createStatusMessage', () => {
     const message = createStatusMessage({
       found: false,
       runId: '',
+      documentRevision: 'NONE',
       status: 'NOT_FOUND',
       gate: 'BLOCKED',
       validation: 'NOT_RUN',
@@ -25,6 +26,7 @@ describe('createStatusMessage', () => {
     const message = createStatusMessage({
       found: true,
       runId: 'system-1',
+      documentRevision: 'S0001',
       status: 'BLOCKED',
       gate: 'BLOCKED',
       validation: 'PASSED',
@@ -40,6 +42,6 @@ describe('createStatusMessage', () => {
     )
     expect(message).toContain('Fresh indexes 2/3 · collected evidence 1/3 · scope violations 0.')
     expect(message).toContain('System artifact validation PASSED · project-scan gate BLOCKED.')
-    expect(message).toContain('Run: system-1 · machine status BLOCKED.')
+    expect(message).toContain('Run: system-1 · document revision S0001 · machine status BLOCKED.')
   })
 })

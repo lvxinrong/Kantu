@@ -13,8 +13,8 @@ export function createStatusMessage(status: ArchScopeStatusResult): string {
       `ArchScope evidence collection finished · ${status.projectCount} projects · current main-agent worldview synthesis ${status.status === 'SYNTHESIZING' ? 'in progress' : 'pending'}.`,
       `Fresh indexes ${status.indexedProjectCount}/${status.projectCount} · collected evidence ${status.evidenceProjectCount}/${status.projectCount} · scope violations ${status.scopeViolationCount}.`,
       `System artifact validation has not finished (${status.validation}) · project-scan gate ${status.gate}.`,
-      `Evidence: ${status.outputDirectory}/system/evidence/index.json`,
-      `Run: ${status.runId} · machine status ${status.status}.`,
+      `Evidence: ${status.outputDirectory}/runs/${status.runId}/system/evidence/index.json`,
+      `Run: ${status.runId} · document revision ${status.documentRevision} · machine status ${status.status}.`,
     ].join('\n')
   }
 
@@ -30,13 +30,16 @@ export function createStatusMessage(status: ArchScopeStatusResult): string {
   const analysisOutcome = sourceAnalysisComplete
     ? 'completed at source level; runtime evidence pending'
     : 'awaiting source evidence'
+  const artifactRoot = status.validation === 'PASSED'
+    ? `${status.outputDirectory}/system`
+    : `${status.outputDirectory}/runs/${status.runId}/system`
 
   return [
     `ArchScope system scan ${scanOutcome} · ${status.projectCount} projects · system analysis ${analysisOutcome}.`,
     `Fresh indexes ${status.indexedProjectCount}/${status.projectCount} · collected evidence ${status.evidenceProjectCount}/${status.projectCount} · scope violations ${status.scopeViolationCount}.`,
     `System artifact validation ${status.validation} · project-scan gate ${status.gate}.`,
-    `Artifacts: ${status.outputDirectory}/system/00-system-fact-base.md`,
-    `Run: ${status.runId} · machine status ${status.status}.`,
+    `Artifacts: ${artifactRoot}/00-system-fact-base.md`,
+    `Run: ${status.runId} · document revision ${status.documentRevision} · machine status ${status.status}.`,
   ].join('\n')
 }
 
@@ -54,6 +57,7 @@ export function createStatusTool(service: ArchScopeService) {
         properties: {
           found: { type: 'boolean', required: true },
           runId: { type: 'string', required: true },
+          documentRevision: { type: 'string', required: true },
           status: { type: 'string', required: true },
           gate: { type: 'string', required: true },
           validation: { type: 'string', required: true },

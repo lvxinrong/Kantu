@@ -38,6 +38,15 @@ export {
   writeSynthesizedSystemArtifacts,
 } from './system/artifacts.js'
 export { buildSystemSynthesisContext } from './system/synthesis.js'
+export {
+  buildSystemRelationCatalog,
+  SYSTEM_RELATION_METRIC_FIELDS,
+  SYSTEM_RELATION_TYPES,
+  systemRelationMetrics,
+  systemRelationMetricValues,
+  validateSystemRelationCatalog,
+} from './system/relations.js'
+export type { SystemRelationMetrics } from './system/relations.js'
 
 export function apply(ctx: Context, config: ArchScopeConfig): void {
   const service = new ArchScopeService(ctx, config)
